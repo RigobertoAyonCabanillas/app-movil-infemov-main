@@ -35,11 +35,12 @@ export const enviarDatosRegistro = async (datos) => {
     const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
     const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
       mode: CryptoJS.mode.ECB, // El modo debe coincidir con el de C#
-      padding: CryptoJS.pad.Pkcs7
+      padding: CryptoJS.pad.Pkcs7 //Verifica que llegue la misma dimension a C# de 16 128 bits
     });
 
     // 3. Obtenemos el resultado en Base64 (es lo más fácil de recibir en .NET)
     const datosParaEnviar = cifrado.toString();
+    console.log(datosParaEnviar)
 
     const response = await fetch(`${API_URL}`, {
       method: 'POST',

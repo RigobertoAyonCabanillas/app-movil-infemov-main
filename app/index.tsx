@@ -45,7 +45,7 @@ console.log("Usuarios disponibles:", users);
         <TextInputEntrada //Ingresar Contraseña usuario
         placeholder="Constraseña"
         value={password}
-        onChangeText = {(text) => setPassword(text)}
+        onChangeText = {(text) => setPassword(text)}//
         />
        
 
