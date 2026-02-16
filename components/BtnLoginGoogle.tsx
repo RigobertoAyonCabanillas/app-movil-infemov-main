@@ -2,7 +2,7 @@ import { Pressable, Text, StyleSheet, Button, View, TouchableOpacity } from "rea
 import styled, { ThemeProvider } from "styled-components/native";
 import * as Google from 'expo-auth-session/providers/google'
 import * as AuthSession from 'expo-auth-session';
-import { useEffect } from "react";
+import { use, useEffect } from "react";
 import { router, Router } from "expo-router";
 import { enviarLoginGoogle } from "../services/authgoogle"
 // Componente funcional que representa un botón de login con Google
@@ -30,25 +30,30 @@ const [ request, response, promptAsync ] = Google.useAuthRequest({
     if (response.type === 'success') {
       console.log("Respuesta completa de Google:", response); // Revisa esto en la terminal
       // Intenta sacar el token de ambos lugares posibles
-      /*const token = response.authentication?.idToken || response.params?.id_token;*/ //aqui solo pido el token
+      const token = response.authentication?.idToken || response.params?.id_token; //aqui solo pido el token
+      console.log("¡TOKEN RECIBIDO!:", token); 
+      enviarLoginGoogle(token || '');
+    } else if (response.type === 'error' || response.type === 'cancel') {
+      console.log("La autenticación no se completó:", response.type);
+    }
 
-      const { accessToken } = response.authentication;
+    //const { accessToken } = response.authentication; //accesstoken puede pasar acceso a drive y otras cosas si no se usa 
       
      // Pedimos los datos (nombre, correo, etc.) a Google usando el token
-      fetch("https://www.googleapis.com/userinfo/v2/me", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      .then(res => res.json())
-      .then(user => {
-        console.log("Datos obtenidos:", user.name, user.email);
-        // Enviamos a tu API
-        return enviarLoginGoogle(user);
-      })
-      .then(() => {
-        router.push('/home');
-      })
-      .catch(err => console.log("Error en el proceso:", err));
-    }
+      // fetch("https://www.googleapis.com/userinfo/v2/me", { correctamente
+      //   headers: { Authorization: `Bearer ${accessToken}` },
+      // })
+      // .then(res => res.json())
+      // .then(user => {
+      //   console.log("Datos obtenidos:", user.name, user.email);
+      //   // Enviamos a tu API
+      //   return enviarLoginGoogle(user);
+      // })
+      // .then(() => {
+      //   router.push('/home');
+      // })
+      // .catch(err => console.log("Error en el proceso:", err));
+      
   }
 }, [response]);
 

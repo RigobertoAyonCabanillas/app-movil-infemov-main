@@ -19,7 +19,7 @@ export const enviarDatosRegistro = async (datos) => {
 
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://192.168.0.120:5254/api/auth/register';
+const API_URL = 'http://100.116.49.102:5254/api/auth/register';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
@@ -58,7 +58,7 @@ export const enviarDatosRegistro = async (datos) => {
         const errorText = await response.text();
         throw new Error(`Error en el servidor: ${errorText}`);
     }
-
+    console.log("Datos enviados correctamente")
     return await response.json();
   } catch (error) {
     console.error("Error al cifrar o enviar:", error);

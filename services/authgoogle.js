@@ -1,4 +1,4 @@
-const API_URL = 'http://192.168.0.120:5254/api/auth/google-register'; 
+const API_URL = 'http://100.116.49.102:5254/api/auth/google-register'; 
 
 export const enviarLoginGoogle = async (userData) => {
   try {
@@ -10,17 +10,15 @@ export const enviarLoginGoogle = async (userData) => {
       },
       // Enviamos el objeto plano con los parámetros que necesitas
       body: JSON.stringify({
-        email: userData.email,
-        nombre: userData.name,
+        IdToken: userData,
         /*googleId: userData.id,
         foto: userData.picture*/
       }),
     });
-
     if (!response.ok) {
       throw new Error(`Error en el servidor: ${response.status}`);
     }
-
+    console.log("Datos Enviados Correctamente");
     return await response.json();
   } catch (error) {
     console.error("Error al enviar datos:", error);
