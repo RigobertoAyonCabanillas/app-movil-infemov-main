@@ -2,7 +2,7 @@ import { Pressable, Text, StyleSheet, Button, View, TouchableOpacity } from "rea
 import styled, { ThemeProvider } from "styled-components/native";
 import * as Google from 'expo-auth-session/providers/google'
 import * as AuthSession from 'expo-auth-session';
-import { use, useEffect } from "react";
+import { use, useEffect, version } from "react";
 import { router, Router } from "expo-router";
 import { enviarLoginGoogle } from "../services/authgoogle"
 // Componente funcional que representa un botón de login con Google
@@ -13,49 +13,46 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function BtnLoginGoogle() {
 
-// ... dentro de tu función BtnLoginGoogle
-const [ request, response, promptAsync ] = Google.useAuthRequest({
-  androidClientId: '751362745566-sj0lik9apclpp6i2h1psh9spkj4rd7lf.apps.googleusercontent.com',
-  scopes: ['profile', 'email'], // Importante para que Google suelte el nombre y correo
-  // CAMBIO CLAVE: Usa el nombre del paquete que registraste en Google
+// Asegúrate de que el esquema coincida con tu app.json
+const scheme = 'com.infemov.appmovil';
+
+const [request, response, promptAsync] = Google.useAuthRequest({
+  androidClientId: '71333420449-c72hsae5vkt6uhm3j67pmd004365aom6.apps.googleusercontent.com',
+  webClientId: '71333420449-5dkid1qm5c17pc1r45i30lvvf9mh7rsb.apps.googleusercontent.com',
+  scopes: ['profile', 'email'],
+  // Forzamos la redirección nativa directa al paquete
   redirectUri: AuthSession.makeRedirectUri({
-    scheme: 'com.infemov.appmovil', 
+    native: `${scheme}:/`, 
   }),
-  webClientId:'',
 });
-
-
+ 
   useEffect(() => {
-  if (response) {
-    if (response.type === 'success') {
-      console.log("Respuesta completa de Google:", response); // Revisa esto en la terminal
-      // Intenta sacar el token de ambos lugares posibles
-      const token = response.authentication?.idToken || response.params?.id_token; //aqui solo pido el token
-      console.log("¡TOKEN RECIBIDO!:", token); 
-      enviarLoginGoogle(token || '');
-    } else if (response.type === 'error' || response.type === 'cancel') {
+  // Creamos una función interna asíncrona
+  const validarYRedirigir = async () => {
+    if (response && response.type === 'success') {
+      console.log("Respuesta completa de Google:", response);
+      
+      const token = response.authentication?.idToken || response.params?.id_token;
+      console.log("¡TOKEN RECIBIDO!:", token);
+
+      // ESPERAMOS a que la API de C# nos de el visto bueno
+      const verificado = await enviarLoginGoogle(token || '');
+
+      if (verificado) {
+        // Solo si la API respondió 200 OK mandamos a home
+        router.push('/home'); 
+      } else {
+        // Aquí podrías poner un alert o mensaje de error: "Error en el servidor"
+        console.log("La API de C# rechazó el token (Error 400 probablemente)");
+      }
+    } else if (response && (response.type === 'error' || response.type === 'cancel')) {
       console.log("La autenticación no se completó:", response.type);
     }
+  };
 
-    //const { accessToken } = response.authentication; //accesstoken puede pasar acceso a drive y otras cosas si no se usa 
-      
-     // Pedimos los datos (nombre, correo, etc.) a Google usando el token
-      // fetch("https://www.googleapis.com/userinfo/v2/me", { correctamente
-      //   headers: { Authorization: `Bearer ${accessToken}` },
-      // })
-      // .then(res => res.json())
-      // .then(user => {
-      //   console.log("Datos obtenidos:", user.name, user.email);
-      //   // Enviamos a tu API
-      //   return enviarLoginGoogle(user);
-      // })
-      // .then(() => {
-      //   router.push('/home');
-      // })
-      // .catch(err => console.log("Error en el proceso:", err));
-      
-  }
-}, [response]);
+  validarYRedirigir(); // Ejecutamos la función interna
+  
+}, [response]); // Se ejecuta cada vez que 'response' cambie
 
 
   return (
