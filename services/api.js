@@ -1,25 +1,6 @@
-// Centralizamos la URL para cambiarla en un solo lugar
-/*const API_URL = 'http://192.168.0.120:5254/api/auth/';
-
-export const enviarDatosRegistro = async (datos) => {
-  try {
-    const response = await fetch(`${API_URL}`, {//EndPoint de enviar
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(datos),
-    });
-    return await response.json();
-  } catch (error) {
-    throw error;
-  }
-};*/
-
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth/register';
+const API_URL = 'http://192.168.0.145:5254/api/auth/register';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#

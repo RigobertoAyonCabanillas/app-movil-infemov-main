@@ -48,21 +48,6 @@ export default function Screen1() {
     { const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; //@antes, @despues, punto(.) despues(.mx ejemplo)
     return regex.test(email); };
 
-
-// useEffect(() =>{
-//   fetch('https://tu-api-url.com/enviar-datos', {
-//     method: 'POST',
-//     headers: {
-//         'Content-Type': 'application/json'
-//     },
-//     body: JSON.stringify(users)
-// })
-// .then(res => res.json())
-// .then(data => console.log("Enviado:", data))
-// .catch(err => console.error("Error:", err));
-// },[])
-
-
   return (
     <Container> 
 

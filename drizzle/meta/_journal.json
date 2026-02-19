@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1771538990510,
+      "tag": "0000_foamy_mathemanic",
+      "breakpoints": true
+    }
+  ]
+}

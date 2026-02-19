@@ -2,7 +2,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Definimos la base de la URL para poder reutilizarla
-const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth'; 
+const BASE_AUTH_URL = 'http://192.168.0.145:5254/api/auth'; 
 
 // --- FUNCIÓN DE ENTRADA (Login) ---
 export const enviarLoginGoogle = async (idToken) => {
