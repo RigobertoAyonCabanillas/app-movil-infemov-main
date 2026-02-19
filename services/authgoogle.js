@@ -2,12 +2,12 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Definimos la base de la URL para poder reutilizarla
-const BASE_AUTH_URL = 'http://192.168.0.120:5254/api/auth'; 
+const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth'; 
 
 // --- FUNCIÓN DE ENTRADA (Login) ---
 export const enviarLoginGoogle = async (idToken) => {
   try {
-    const response = await fetch(`${BASE_AUTH_URL}/google-register`, {
+    const response = await fetch(`${BASE_AUTH_URL}/google-auth`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -22,11 +22,21 @@ export const enviarLoginGoogle = async (idToken) => {
       throw new Error(`Error en el servidor: ${response.status}`);
     }
 
+    // Aquí el backend ya respondió, pero todavía está en bruto (HTTP Response). 
+    // // Lo conviertes a JSON:
     const data = await response.json();
+    console.log("Respuesta completa del backend:", data);
     
-    // IMPORTANTE: Guarda el token localmente para saber que hay una sesión activa
-    await AsyncStorage.setItem('userToken', idToken);
-    
+    // Aquí esperamos que el backend nos devuelva algo como: 
+    // { accessToken: "eyJhbGciOi..." }
+    if (data?.token) { 
+      // Guardamos el token propio del backend
+      await AsyncStorage.setItem('userToken', data.token); 
+      console.log("Login exitoso en API, token guardado"); 
+      } else { console.log("El backend no devolvió accessToken");   
+    }
+
+    console.log("Token del backend (token):", data.token);
     console.log("Login exitoso en API");
     return data;
   } catch (error) {

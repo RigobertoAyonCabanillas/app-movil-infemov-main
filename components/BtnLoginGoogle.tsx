@@ -7,6 +7,7 @@ import { router, Router } from "expo-router";
 import { enviarLoginGoogle } from "../services/authgoogle"
 // Componente funcional que representa un botón de login con Google
 import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // ESTA LÍNEA ES VITAL: Pónla justo debajo de los imports, fuera del componente
 WebBrowser.maybeCompleteAuthSession();
 
@@ -31,15 +32,14 @@ const [request, response, promptAsync] = Google.useAuthRequest({
   const validarYRedirigir = async () => {
     if (response && response.type === 'success') {
       console.log("Respuesta completa de Google:", response);
-      
       const token = response.authentication?.idToken || response.params?.id_token;
       console.log("¡TOKEN RECIBIDO!:", token);
 
-      // ESPERAMOS a que la API de C# nos de el visto bueno
+      // Mandamos el idToken al backend
       const verificado = await enviarLoginGoogle(token || '');
-
-      if (verificado) {
-        // Solo si la API respondió 200 OK mandamos a home
+      
+      if (verificado?.token) {
+        //Enviamos a la pantalla principal
         router.push('/home'); 
       } else {
         // Aquí podrías poner un alert o mensaje de error: "Error en el servidor"
