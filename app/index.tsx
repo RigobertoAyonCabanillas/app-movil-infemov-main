@@ -4,9 +4,10 @@ import { Button, TouchableOpacity } from "react-native";
 import BtnLoginGoogle from "../components/BtnLoginGoogle";
 import { UserContext } from "../components/UserContext";
 import { Container, MultiAccount, Registros, TextInputEntrada, Title } from "../styles/loginStyle";
+import { useAuthService } from "@/servicesdb/authService";
 
 
-export default function Screen1() {
+export default function Login() {
 
 const {users} = useContext(UserContext)
 const [user, setUser] = useState("");
@@ -15,19 +16,21 @@ const [email, setEmail] = useState("");
     
 const router = useRouter();
 
-const handleLogin = () =>{
-    const usuario = users.find(
-      (u) => u.userName === user && u.passwordNew === password
-    );
 
-     if(usuario){
-      alert("Login Exitoso")
-      router.push("/home")
-     }else{
-      alert("Credencial Incorrecta")
-     }
+//Obtienes la función del servicio
+const { loginUsuarioProceso } = useAuthService();
 
+const handleLogin = async () => {
+  // Validación básica de campos
+  if (!email.trim() || !password.trim()) {
+    alert("Por favor, ingresa tus credenciales");
+    return;
+  }
+
+  // 2. Llamas al proceso que busca en SQLite
+  await loginUsuarioProceso(email, password);
 };
+
 console.log("Usuarios disponibles:", users);
 
 
@@ -38,8 +41,8 @@ console.log("Usuarios disponibles:", users);
       
         <TextInputEntrada //Ingresar Nombre usuario
          placeholder="Usuario"
-         value={user}
-         onChangeText = {(text) => setUser(text)}
+         value={email}
+         onChangeText = {(text) => setEmail(text)}
          />
       
         <TextInputEntrada //Ingresar Contraseña usuario

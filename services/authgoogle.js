@@ -1,11 +1,12 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 // Definimos la base de la URL para poder reutilizarla
-const BASE_AUTH_URL = 'http://192.168.0.145:5254/api/auth'; 
+const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth'; 
 
 // --- FUNCIÓN DE ENTRADA (Login) ---
-export const enviarLoginGoogle = async (idToken) => {
+export const enviarLoginGoogle = async (accessToken, idToken) => {
   try {
     const response = await fetch(`${BASE_AUTH_URL}/google-auth`, {
       method: 'POST',
@@ -14,29 +15,35 @@ export const enviarLoginGoogle = async (idToken) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        IdToken: idToken,
+        accessToken: accessToken, // Obligatorio para C#
+        IdToken: idToken          // Opcional/Adicional para C#
       }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Detalle de error del servidor:", errorText);
       throw new Error(`Error en el servidor: ${response.status}`);
     }
 
     // Aquí el backend ya respondió, pero todavía está en bruto (HTTP Response). 
-    // // Lo conviertes a JSON:
+    // Lo conviertes a JSON:
     const data = await response.json();
     console.log("Respuesta completa del backend:", data);
     
     // Aquí esperamos que el backend nos devuelva algo como: 
-    // { accessToken: "eyJhbGciOi..." }
-    if (data?.token) { 
+    // { Token: "eyJhbGciOi..." } (tu C# parece devolver "Token" o "token")
+    const jwtToken = data?.token || data?.Token;
+
+    if (jwtToken) { 
       // Guardamos el token propio del backend
-      await AsyncStorage.setItem('userToken', data.token); 
+      await AsyncStorage.setItem('userToken', jwtToken); 
       console.log("Login exitoso en API, token guardado"); 
-      } else { console.log("El backend no devolvió accessToken");   
+    } else { 
+      console.log("El backend no devolvió accessToken/Token");   
     }
 
-    console.log("Token del backend (token):", data.token);
+    console.log("Token del backend (token):", jwtToken);
     console.log("Login exitoso en API");
     return data;
   } catch (error) {
@@ -46,28 +53,43 @@ export const enviarLoginGoogle = async (idToken) => {
 };
 
 // --- FUNCIÓN DE SALIDA (Logout) ---
-export const cerrarSesionGoogle = async () => {
+export const cerrarSesionUniversal = async () => {
   try {
-    // 1. (Opcional) Avisar a tu API de C#
+    // 1. Avisar a tu API de C#
     const token = await AsyncStorage.getItem('userToken');
     if (token) {
+      try {
         await fetch(`${BASE_AUTH_URL}/logout`, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ Token: token })
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ Token: token })
         });
+        console.log("Notificación de logout enviada a C#");
+      } catch (e) {
+        console.log("Servidor C# no disponible, continuando localmente...");
+      }
     }
 
-    // 2. Limpiar el SDK de Google (Para que no te de el mismo token siempre)
-    await GoogleSignin.signOut();
+    // 2. Cierre de Google (Fuerza bruta para asegurar)
+    try {
+      // En lugar de preguntar, intentamos cerrar directamente.
+      // Si no hay sesión, simplemente no hará nada.
+      await GoogleSignin.signOut();
+      console.log("Comando signOut de Google ejecutado");
+    } catch (googleError) {
+      // Este catch captura si no había sesión, evitando que la app truene
+      console.log("Google ya estaba cerrado o no era necesario");
+    }
 
-    // 3. Limpiar almacenamiento local
+    // 3. Limpieza Total
     await AsyncStorage.clear();
+    console.log("Almacenamiento local limpiado (Token eliminado)");
 
-    console.log("Sesión cerrada correctamente");
-    return true;
+    return true; 
+    
   } catch (error) {
-    console.error("Error al cerrar sesión:", error);
-    throw error;
+    console.error("Error crítico:", error);
+    await AsyncStorage.clear();
+    return true; 
   }
 };

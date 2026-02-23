@@ -2,9 +2,9 @@ import { router } from "expo-router";
 import React, { useContext, useState, useEffect } from "react";
 import { UserContext } from "../components/UserContext";
 import { BotonMostrar, Container, FieldGroup, Fields, SubmitF, TextInputEntrada, TextoBoton, Title } from "../styles/registerStyles";
-import { enviarDatosRegistro } from '../services/api';
+import { useAuthService } from "@/servicesdb/authService";
 
-export default function Screen1() {
+export default function Registro() {
 
   const {users, setUsers} = useContext(UserContext);//Importacionde los datos desde UserContext Compartidos
   const [nombre, setUser] = useState("");
@@ -13,6 +13,9 @@ export default function Screen1() {
   const [apellido, setLastName] = useState("")
   const [telefono, setNumberPhone] = useState("")
   const [secure, setSecure] = useState(true);
+
+//Estados de la base de datos SQLlite
+const { registrarUsuarioProceso } = useAuthService();
     
 
  //Funcion principal del formulario
@@ -24,24 +27,27 @@ export default function Screen1() {
 
     if (!validarEmail(email)) { 
         alert("El correo electrónico no es válido"); 
-    return; }
-
-    const NewUsers = {nombre, password, email, apellido, telefono}
-    setUsers([...users, NewUsers]/*Guardamos en memeoria compartida*/)
-    console.log("Usuarios en memoria:", users); 
-
-    try { //Funcion para enviar datos se uso NewUser para mostrar datos antes
-    const resultado = await enviarDatosRegistro(NewUsers);
-    console.log("Datos en la web de pruebas:", resultado);
-    alert("¡Registro enviado a la API!");
-    } catch (error) {
-    alert("Error de conexión con la API");
+    return;
     }
 
-    alert("Usuario registrado en memoria");
-    return router.replace("/");
+    //ACTUALIZAR CONTEXTO
+    const NewUser = {nombre, password, email, apellido, telefono};
+    
+    
+    try { 
+    // ESTA LÍNEA HACE TODO: SQLite + Cifrado + API
+    await registrarUsuarioProceso(NewUser);
 
- }
+    //Estado Global: Actualizar el Contexto
+    // Si 'users' es un array, añadimos el nuevo; si es un objeto único, lo reemplazamos
+    setUsers(NewUser);
+
+    } catch (error) {
+      console.error(error);
+      alert("Error en el proceso de registro");
+      return router.replace("/");
+    }
+ };
 
  //Funcion para validar correo correctamente
  const validarEmail = (email: string) => 

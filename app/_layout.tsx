@@ -1,40 +1,62 @@
 import { Stack } from 'expo-router';
-import { Suspense } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { Suspense, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { SQLiteProvider, openDatabaseSync } from 'expo-sqlite';
-import { drizzle } from 'drizzle-orm/expo-sqlite';
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
-import migrations from '@/drizzle/migrations';
 import { UserProvider } from "../components/UserContext";
 
-export const DATABASE_NAME = 'tasks';
+// Definimos el nombre de la base de datos de forma global
+export const BaseDatos = 'bdMovil';
 
 export default function Layout() {
+  const [isReady, setIsReady] = useState(false);
 
-  const expoDb = openDatabaseSync(DATABASE_NAME); //Creacion de la base de datos
-  const db = drizzle(expoDb);//Esquema de base de datos db
-  const { success, error } = useMigrations(db, migrations); //Migraciones en la base de datos
+  useEffect(() => {
+    async function setup() {
+      try {
+        // Abrimos la conexión dentro del efecto
+        const db = openDatabaseSync(BaseDatos);
+        
+        // Ejecutamos la creación
+        await db.execAsync(`
+          PRAGMA journal_mode = WAL;
+          CREATE TABLE IF NOT EXISTS usersdb (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombres TEXT NOT NULL,
+            apellidos TEXT NOT NULL,
+            correo TEXT NOT NULL UNIQUE,
+            telefono TEXT NOT NULL,
+            contrasena TEXT NOT NULL
+          );
+        `);
+        
+        console.log("✅ [SQLite] Tabla preparada correctamente");
+        setIsReady(true);
+      } catch (error) {
+        console.error("❌ [SQLite] Error en el setup:", error);
+        // Incluso si falla, dejamos que la app intente cargar para ver el error en pantalla
+        setIsReady(true); 
+      }
+    }
+    setup();
+  }, []);
 
-  // Mientras se aplican las migraciones de la DB local
-  if (error) {
-    return <ActivityIndicator size="small" color="red" />; 
-  }
-  if (!success) {
-    return <ActivityIndicator size="large" />;
+  if (!isReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
   }
 
   return (
     <Suspense fallback={<ActivityIndicator size="large" />}>
-      <SQLiteProvider
-        databaseName={DATABASE_NAME}
-        options={{ enableChangeListener: true }}
-        useSuspense
-      >
+      {/* SQLiteProvider permite que useSQLiteContext funcione en tus servicios */}
+      <SQLiteProvider databaseName={BaseDatos} useSuspense>
         <UserProvider>
-          <Stack>
+          <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" options={{ title: "Login" }} />
-            <Stack.Screen name="register" options={{ title: "Register" }} />
-            <Stack.Screen name="home" options={{ title: "Home" }} />
+            <Stack.Screen name="register" options={{ title: "Registro" }} />
+            <Stack.Screen name="home" options={{ title: "Inicio" }} />
           </Stack>
         </UserProvider>
       </SQLiteProvider>

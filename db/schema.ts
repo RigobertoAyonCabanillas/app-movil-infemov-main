@@ -1,27 +1,12 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
-// export const tasks = sqliteTable('tasks', {
-//   id: integer('id').primaryKey({ autoIncrement: true }),
-//   name: text('name').notNull(),
-//   list_id: integer('list_id')
-//     .notNull()
-//     .references(() => lists.id),
-// });
-
-// export const lists = sqliteTable('lists', {
-//   id: integer('id').primaryKey({ autoIncrement: true }),
-//   name: text('name').notNull(),
-// });
-
-// Export Task to use as an interface in your app
-// export type Task = typeof tasks.$inferSelect;
-
-
-export const usuariosLocal= sqliteTable('usuariosLocales', { 
+//Se crea el schema de la tabla de registro
+export const usersdb = sqliteTable('usersdb', { 
     id: integer('id').primaryKey({ autoIncrement: true }),
-    nombre: text('nombre').notNull(),
-    apellidos: text('nombre').notNull(),
-    correo: text('nombre').notNull(),
-    telefono: text('nombre').notNull(),
-    constraseña: text('nombre').notNull(),
+    nombres: text('nombres').notNull(),
+    apellidos: text('apellidos').notNull(),
+    correo: text('correo').notNull().unique(),
+    telefono: text('telefono').notNull(),
+    contrasena: text('contrasena').notNull(),
+    token: text('token'), //Nueva columna para el JWT de la API o Google
 });
