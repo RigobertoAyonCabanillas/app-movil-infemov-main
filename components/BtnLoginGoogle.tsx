@@ -8,6 +8,8 @@ import { enviarLoginGoogle } from "../services/authgoogle"
 // Componente funcional que representa un botón de login con Google
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthService } from '@/servicesdb/authService'; //guardado con google en sqlite
+
 // ESTA LÍNEA ES VITAL: Pónla justo debajo de los imports, fuera del componente
 WebBrowser.maybeCompleteAuthSession();
 
@@ -15,6 +17,8 @@ WebBrowser.maybeCompleteAuthSession();
 WebBrowser.maybeCompleteAuthSession();
 
 export default function BtnLoginGoogle() {
+
+  const { guardarUsuarioEnSQLite } = useAuthService();
 
   // Asegúrate de que el esquema coincida con tu app.json
   const scheme = 'com.infemov.appmovil';
@@ -55,22 +59,23 @@ export default function BtnLoginGoogle() {
         // Mandamos AMBOS tokens al backend
         const verificado = await enviarLoginGoogle(accessToken, idToken);
         
-        if (verificado?.token || verificado?.Token) {
+        if (verificado?.Token || verificado?.token) {
 
           // --- AQUÍ VA LA LÓGICA DE SQLITE ---
           // Preparamos el objeto con lo que responda tu API
           const datosParaSQLite = {
-            nombres: verificado.nombre || "Usuario Google",
-            apellidos: verificado.apellido || "",
-            correo: verificado.email, 
+            nombres: verificado.user?.nombre || "", 
+            apellidos: verificado.user?.apellido || "",
+            correo: verificado.user?.email || "",
             token: verificado.token || verificado.Token,
           };
+          console.log("🚀 Datos mapeados para enviar a SQLite:", datosParaSQLite);
 
           // 2. GUARDAMOS EN SQLITE (Persistencia local)
           await guardarUsuarioEnSQLite(datosParaSQLite);
 
           // Enviamos a la pantalla principal
-          router.push('/home'); 
+          //router.push('/home'); 
         } else {
           // Aquí podrías poner un alert o mensaje de error: "Error en el servidor"
           console.log("La API de C# rechazó el token (Error 400 probablemente)");
@@ -101,6 +106,4 @@ padding: 0.4em;
 margin-right: 0px;
 `;
 
-function guardarUsuarioEnSQLite(datosParaSQLite: { nombres: any; apellidos: any; correo: any; token: any; }) {
-  throw new Error("Function not implemented.");
-}
+

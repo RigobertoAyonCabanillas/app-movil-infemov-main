@@ -62,40 +62,43 @@ export function useAuthService() {
   };
 
   // --- 3. PROCESO PARA GOOGLE (UPSERT) ---
+  //Aqui el code es de forma nativa por incompativilidades en el desarrollo
  const guardarUsuarioEnSQLite = async (datos: { nombres: string, apellidos: string, correo: string, token: string }) => {
-    try {
-      // 1. El SELECT suele funcionar bien, lo mantenemos igual
-      const resultado = await drizzleDb
-        .select()
-        .from(schema.usersdb)
-        .where(eq(schema.usersdb.correo, datos.correo));
+  try {
+    console.log("💾 Iniciando guardado con bypass de seguridad...");
 
-      if (resultado.length > 0) {
-        // 2. CAMBIO TÉCNICO: Usamos SQL puro a través de Drizzle para el UPDATE
-        // Esto evita la función "not implemented" del ORM
-        await drizzleDb.run(
-          sql`UPDATE usersdb SET token = ${datos.token} WHERE correo = ${datos.correo}`
-        );
-        
-        setUsers({ ...resultado[0], token: datos.token });
-        console.log("✅ Sesión de Google actualizada con SQL-Drizzle");
-      } else {
-        // 3. CAMBIO TÉCNICO: Usamos SQL puro para el INSERT
-        await drizzleDb.run(
-          sql`INSERT INTO usersdb (nombres, apellidos, correo, telefono, contrasena, token) 
-              VALUES (${datos.nombres}, ${datos.apellidos}, ${datos.correo}, 'S/N', 'AUTH_GOOGLE', ${datos.token})`
-        );
-        
-        const nuevo = { ...datos, telefono: "S/N", contrasena: "AUTH_GOOGLE" };
-        setUsers(nuevo);
-        console.log("✅ Nuevo usuario de Google guardado con SQL-Drizzle");
-      }
-      
-      router.replace("/home");
-    } catch (error: any) {
-      console.error("❌ Error persistente:", error.message);
+    // 1. Si db es nulo, no disparamos nada para evitar el crash
+    if (!db) {
+      console.error("Conexión perdida. Reintentando en 1 segundo...");
+      setTimeout(() => guardarUsuarioEnSQLite(datos), 5000);
+      return;
     }
-  };
+
+    // 2. FORZAMOS el uso de execAsync (es el método más crudo y estable de SQLite)
+    // Este método no usa 'prepareAsync', por lo que NO debería lanzar el NullPointer
+    await db.execAsync(`
+      INSERT INTO usersdb (nombres, apellidos, correo, telefono, contrasena, token)
+      VALUES ('${datos.nombres}', '${datos.apellidos}', '${datos.correo}', 'S/N', 'GOOGLE_LOGIN', '${datos.token}')
+    `);
+
+    console.log("✅ ¡GUARDADO EXITOSO CON EXEC_ASYNC!");
+    
+    setUsers({ ...datos, telefono: "S/N", contrasena: "GOOGLE_LOGIN" });
+    router.replace("/home");
+
+  } catch (error: any) {
+    // Si el error es "UNIQUE constraint", significa que ya existe, así que hacemos el UPDATE
+    if (error.message.includes("UNIQUE")) {
+       await db.execAsync(`
+         UPDATE usersdb SET token = '${datos.token}' WHERE correo = '${datos.correo}';
+       `);
+       console.log("✅ ¡TOKEN ACTUALIZADO!");
+       router.replace("/home");
+    } else {
+       console.error("🛑 Error persistente:", error.message);
+    }
+  }
+};
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite };
 }
