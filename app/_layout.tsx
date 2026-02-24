@@ -25,7 +25,8 @@ export default function Layout() {
             apellidos TEXT NOT NULL,
             correo TEXT NOT NULL UNIQUE,
             telefono TEXT NOT NULL,
-            contrasena TEXT NOT NULL
+            contrasena TEXT NOT NULL,
+            token TEXT
           );
         `);
         
