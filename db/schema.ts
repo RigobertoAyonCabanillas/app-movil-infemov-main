@@ -9,4 +9,5 @@ export const usersdb = sqliteTable('usersdb', {
     telefono: text('telefono').notNull(),
     contrasena: text('contrasena').notNull(),
     token: text('token'), //Nueva columna para el JWT de la API o Google
+    deviceId: text('deviceId'),
 });

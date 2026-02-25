@@ -26,7 +26,8 @@ export default function Layout() {
             correo TEXT NOT NULL UNIQUE,
             telefono TEXT NOT NULL,
             contrasena TEXT NOT NULL,
-            token TEXT
+            token TEXT,
+            deviceId TEXT,
           );
         `);
         
@@ -57,7 +58,8 @@ export default function Layout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" options={{ title: "Login" }} />
             <Stack.Screen name="register" options={{ title: "Registro" }} />
-            <Stack.Screen name="home" options={{ title: "Inicio" }} />
+            {/* El grupo que contiene la barra inferior */}
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
         </UserProvider>
       </SQLiteProvider>
