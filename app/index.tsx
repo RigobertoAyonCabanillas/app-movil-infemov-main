@@ -14,7 +14,7 @@ const {users} = useContext(UserContext)
 const [user, setUser] = useState("");
 const [password, setPassword] = useState("");
 const [email, setEmail] = useState("");
-    
+
 const router = useRouter();
 
 

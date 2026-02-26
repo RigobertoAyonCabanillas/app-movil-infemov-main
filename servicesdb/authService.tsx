@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro } from '@/services/api'; 
+import { enviarDatosRegistro, obtenerDatosPerfil } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -12,97 +12,54 @@ export function useAuthService() {
   const drizzleDb = useMemo(() => drizzle(db, { schema }), [db]);
   const { users, setUsers } = useContext(UserContext);
 
-  // --- 1. REGISTRO (SQLite + API) ---
-const registrarUsuarioProceso = async (datosFormulario: any) => {
-  try {
-    // 1. Guardar en SQLite primero (Persistencia local)
-    await drizzleDb.insert(schema.usersdb).values({
-      nombres: datosFormulario.nombre,
-      apellidos: datosFormulario.apellido,
-      correo: datosFormulario.email,
-      telefono: datosFormulario.telefono,
-      contrasena: datosFormulario.password, // Recuerda: idealmente aquí va el HASH
-      deviceId: datosFormulario.deviceId,   // <--- AGREGAR ESTO para guardar el ID localmente
-      token: null, 
-    });
-
-    console.log("✅ Guardado en SQLite con éxito");
-
-    // 2. Intentar registro en la API externa (.NET)
+  // --- 1. REGISTRO MANUAL ---
+  const registrarUsuarioProceso = async (datosFormulario: any) => {
     try {
-      // Enviamos el objeto completo que ya trae el deviceId y pasará por el cifrado AES
-      await enviarDatosRegistro(datosFormulario); 
-      console.log("🚀 Sincronizado con el servidor");
-    } catch (apiError) {
-      // Como ingeniero, esto es un "Offline-First approach"
-      console.warn("⚠️ Falló API, pero el dato está en el móvil:", apiError);
+      await drizzleDb.insert(schema.usersdb).values({
+        nombres: datosFormulario.nombre,
+        apellidos: datosFormulario.apellido,
+        correo: datosFormulario.email,
+        telefono: datosFormulario.telefono,
+        contrasena: datosFormulario.password,
+        token: null, 
+      });
+
+      console.log("✅ Guardado en SQLite con éxito");
+      try {
+        await enviarDatosRegistro(datosFormulario);
+      } catch (apiError) {
+        console.warn("⚠️ Falló API, pero el dato está seguro en el móvil:", apiError);
+      }
+
+      alert("¡Registro exitoso!");
+      router.replace("/");
+    } catch (dbError: any) {
+      if (dbError.message.includes("UNIQUE constraint failed")) {
+        alert("Error: Este correo electrónico ya está registrado.");
+      } else {
+        console.error("❌ Error de DB:", dbError);
+      }
     }
+  };
 
-    alert("¡Registro exitoso!");
-    router.replace("/"); // Regresa al Login
+  // --- 2. LOGIN LOCAL ---
+  const loginUsuarioProceso = async (email: string, password: string) => {
+    try {
+      const resultado = await drizzleDb
+        .select()
+        .from(schema.usersdb)
+        .where(and(eq(schema.usersdb.correo, email), eq(schema.usersdb.contrasena, password)));
 
-  } catch (dbError: any) {
-    // Manejo de errores de base de datos local
-    if (dbError.message?.includes("UNIQUE constraint failed")) {
-      alert("Error: Este correo electrónico ya está registrado en este dispositivo.");
-    } else {
-      console.error("❌ Error de DB:", dbError);
-      alert("Hubo un error al guardar los datos localmente.");
+      if (resultado.length > 0) {
+        setUsers(resultado[0]); 
+        router.replace("/home"); 
+      } else {
+        alert("Correo o contraseña incorrectos.");
+      }
+    } catch (error) {
+      console.error("Error en login:", error);
     }
-  }
-};
-
-  // --- 2. LOGIN (Híbrido: API + Local) ---
-const loginUsuarioProceso = async (email: string, password: string) => {
-  try {
-    // 1. Llamada al API (Obtenemos el objeto { Data: "..." } encriptado)
-    const respuestaApiRaw = await enviarDatosLogin(email, password);
-
-    // Verificamos ambas posibilidades (Data o data)
-    const stringCifrado = respuestaApiRaw?.data || respuestaApiRaw?.Data;
-
-    // 2. DESENCRIPTAR
-    if (stringCifrado) {
-    const datosUsuario = desencriptarDatos(stringCifrado);
-
-    // ... resto de tu lógica para Drizzle
-    if (datosUsuario) {
-      console.log("✅ Datos desencriptados:", datosUsuario);
-      console.log("Estructura exacta del usuario:", Object.keys(datosUsuario));
-
-      // 3. Guardar en SQLite con Drizzle
-      await drizzleDb
-        .insert(schema.usersdb)
-        .values({//por corregir
-          id: datosUsuario.id, 
-          nombres: datosUsuario.nombres,
-          apellidos: datosUsuario.apellidos,
-          correo: datosUsuario.correo,
-          telefono: datosUsuario.telefono,
-          contrasena: password, // O la que prefieras manejar localmente
-          token: datosUsuario.token
-        })
-        .onConflictDoUpdate({
-          target: schema.usersdb.id,
-          set: { 
-            token: datosUsuario.token,
-            nombres: datosUsuario.nombres 
-          }
-        });
-
-      // 4. Actualizar estado global y navegar
-      setUsers(datosUsuario); 
-      router.replace("/(tabs)/home"); 
-    } else {
-      alert("Error al procesar los datos de seguridad del servidor.");
-    }
-    } else {
-    console.error("❌ No se encontró la propiedad de datos cifrados en la respuesta");
-  }
-  } catch (error) {
-    console.error("Error en el flujo de login:", error);
-  }
-};
+  };
 
   // --- 3. PROCESO PARA GOOGLE (UPSERT) ---
   //Aqui el code es de forma nativa por incompativilidades en el desarrollo
@@ -127,7 +84,7 @@ const loginUsuarioProceso = async (email: string, password: string) => {
     console.log("✅ ¡GUARDADO EXITOSO CON EXEC_ASYNC!");
     
     setUsers({ ...datos, telefono: "S/N", contrasena: "GOOGLE_LOGIN" });
-    router.replace("/(tabs)/home");
+    router.replace("/home");
 
   } catch (error: any) {
     // Si el error es "UNIQUE constraint", significa que ya existe, así que hacemos el UPDATE
@@ -143,5 +100,54 @@ const loginUsuarioProceso = async (email: string, password: string) => {
   }
 };
 
-  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite };
+  //4. Función para sincronizar la base de datos local
+  const sincronizarPerfil = async (userId: string, correo: string) => {
+    try {
+      // 1. Pedir a la API (Datos frescos)
+      const datosApi = await obtenerDatosPerfil(userId);
+
+      // 2. Guardar en SQLite y OBTENER el resultado actualizado
+      // Cambié drizzleDb por db para ser consistente con tus errores previos
+      const filasActualizadas = await drizzleDb
+        .update(schema.usersdb)
+        .set({
+          nombres: datosApi.nombres,
+          apellidos: datosApi.apellidos,
+          telefono: datosApi.telefono,
+          correo: datosApi.email,
+          token: datosApi.token || null,
+        })
+        .where(eq(schema.usersdb.correo, correo))
+        .returning(); // <--- IMPORTANTE: Esto retorna el registro actualizado
+
+      // 3. Actualizar el Contexto Global
+      // Usamos el primer elemento del array que devuelve .returning()
+      if (filasActualizadas.length > 0) {
+        setUsers(filasActualizadas[0]);
+      } else {
+        // Si por alguna razón no se actualizó (ej. no existía el correo), 
+        // usamos lo que vino de la API para que la UI no falle.
+        setUsers(datosApi);
+      }
+
+      console.log("✅ SQLite y Contexto sincronizados");
+      return datosApi;
+
+    } catch (error) {
+      console.error("❌ Error sincronización:", error);
+      
+      // Si falla la red, buscamos en local para no dejar la pantalla en blanco
+      const dataLocal = await drizzleDb
+        .select()
+        .from(schema.usersdb)
+        .where(eq(schema.usersdb.correo, correo))
+        .get();
+      
+      if (dataLocal) setUsers(dataLocal);
+      return dataLocal;
+    }
+  };
+
+  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil };
 }
+

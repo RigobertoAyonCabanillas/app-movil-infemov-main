@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://192.168.0.137:5254/api/auth';
+const API_URL = 'http://100.116.49.102:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -100,6 +100,7 @@ export const enviarDatosLogin = async (correo, contrasena) => {
       }),
     });
 
+
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Credenciales incorrectas o error: ${errorText}`);
@@ -109,11 +110,54 @@ export const enviarDatosLogin = async (correo, contrasena) => {
     console.log("✅ Login exitoso");
     console.log("🚀 DATOS RECIBIDOS DEL API:", JSON.stringify(data, null, 2));
 
-
+ 
     return data; // Aquí debería venir el usuario y el token desde .NET
 
   } catch (error) {
     console.error("❌ Error en login:", error);
+    throw error;
+  }
+};
+
+// Consulta de información de perfil
+export const obtenerDatosPerfil = async (userId) => {
+  try {
+    // 1. Preparamos el dato que identifica al usuario (por ejemplo, su ID o Correo)
+    const datosCuerpo = JSON.stringify({ id: userId });
+
+    // 2. Ciframos usando la misma lógica de tu Registro
+    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
+    const cifrado = CryptoJS.AES.encrypt(datosCuerpo, key, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
+    });
+
+    const datosParaEnviar = cifrado.toString();
+
+    // 3. Petición al endpoint de Perfil (usualmente un POST para enviar el cuerpo cifrado)
+    const response = await fetch(`${API_URL}/profile`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        Data: datosParaEnviar 
+      }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Error al obtener perfil: ${response.status}`);
+    }
+
+    const resultadoCifrado = await response.json();
+    
+    // IMPORTANTE: Si el servidor te responde con datos cifrados, 
+    // aquí tendrías que aplicar CryptoJS.AES.decrypt para leerlos.
+    return resultadoCifrado; 
+
+  } catch (error) {
+    console.error("Error en la consulta de perfil:", error);
     throw error;
   }
 };

@@ -27,7 +27,7 @@ export default function Layout() {
             telefono TEXT NOT NULL,
             contrasena TEXT NOT NULL,
             token TEXT,
-            deviceId TEXT,
+            deviceId TEXT
           );
         `);
         
