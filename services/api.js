@@ -1,27 +1,32 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth';
+const API_URL = 'http://192.168.0.137:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
 
 export const desencriptarDatos = (datosCifrados) => {
   try {
+    if (!datosCifrados) return null;
+
     const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
+    
+    // IMPORTANTE: Asegúrate de que datosCifrados sea un string.
+    // Usamos CryptoJS.AES.decrypt(string, key, ...)
     const bytes = CryptoJS.AES.decrypt(datosCifrados, key, {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7
     });
 
-    const textoOriginal = bytes.toString(CryptoJS.enc.Utf8);
+    const textoDecodificado = bytes.toString(CryptoJS.enc.Utf8);
     
-    if (!textoOriginal) {
-      throw new Error("No se pudo desencriptar: resultado vacío. Revisa la llave o el padding.");
+    if (!textoDecodificado) {
+        throw new Error("No se pudo decodificar el texto (posible llave incorrecta)");
     }
 
-    return JSON.parse(textoOriginal);
+    return JSON.parse(textoDecodificado);
   } catch (error) {
-    console.error("❌ Error al desencriptar:", error);
+    console.error("❌ Error al desencriptar:", error.message);
     return null;
   }
 };
@@ -106,12 +111,17 @@ export const enviarDatosLogin = async (correo, contrasena) => {
         throw new Error(`Credenciales incorrectas o error: ${errorText}`);
     }
 
-    const data = await response.json();
+    const dataCifrada = await response.json();
     console.log("✅ Login exitoso");
-    console.log("🚀 DATOS RECIBIDOS DEL API:", JSON.stringify(data, null, 2));
+    console.log("🚀 DATOS RECIBIDOS DEL API:", JSON.stringify(dataCifrada, null, 2));
 
- 
-    return data; // Aquí debería venir el usuario y el token desde .NET
+    // AQUÍ DESENCRIPTAS: Para que el AuthService reciba el objeto JSON 
+    // y no un string base64.
+    const dataDesencriptada = desencriptarDatos(dataCifrada.data);
+
+    console.log("✅ Login exitoso y data desencriptada");
+    console.log("Datos decodificados: ", dataDesencriptada)
+    return dataDesencriptada; // Devuelve { usuario: { id: ... }, token: ... }
 
   } catch (error) {
     console.error("❌ Error en login:", error);
@@ -120,44 +130,33 @@ export const enviarDatosLogin = async (correo, contrasena) => {
 };
 
 // Consulta de información de perfil
-export const obtenerDatosPerfil = async (userId) => {
+export const obtenerDatosPerfil = async (token) => {
   try {
-    // 1. Preparamos el dato que identifica al usuario (por ejemplo, su ID o Correo)
-    const datosCuerpo = JSON.stringify({ id: userId });
-
-    // 2. Ciframos usando la misma lógica de tu Registro
-    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
-    const cifrado = CryptoJS.AES.encrypt(datosCuerpo, key, {
-      mode: CryptoJS.mode.ECB,
-      padding: CryptoJS.pad.Pkcs7
-    });
-
-    const datosParaEnviar = cifrado.toString();
-
-    // 3. Petición al endpoint de Perfil (usualmente un POST para enviar el cuerpo cifrado)
+    // 1. Petición GET limpia. No enviamos body porque el ID sale del Token en .NET
     const response = await fetch(`${API_URL}/profile`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
+      method: 'GET',
+      headers: { 
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}` // 👈 Esto es lo que lee el [Authorize]
       },
-      body: JSON.stringify({ 
-        Data: datosParaEnviar 
-      }),
     });
 
     if (!response.ok) {
-        throw new Error(`Error al obtener perfil: ${response.status}`);
+        if(response.status === 401) throw new Error("Sesión expirada");
+        throw new Error("Error en la comunicación con el servidor");
     }
 
-    const resultadoCifrado = await response.json();
-    
-    // IMPORTANTE: Si el servidor te responde con datos cifrados, 
-    // aquí tendrías que aplicar CryptoJS.AES.decrypt para leerlos.
-    return resultadoCifrado; 
+    // 2. Recibir { Data: "..." }
+    const resultadoDelServidor = await response.json(); 
+
+    // 3. Desencriptar la respuesta de SQL Server
+    const dataLimpia = desencriptarDatos(resultadoDelServidor.Data);
+
+    console.log("✅ Perfil recuperado de SQL Server:", dataLimpia);
+    return dataLimpia; 
 
   } catch (error) {
-    console.error("Error en la consulta de perfil:", error);
+    console.error("❌ Falló el flujo de perfil:", error.message);
     throw error;
   }
 };

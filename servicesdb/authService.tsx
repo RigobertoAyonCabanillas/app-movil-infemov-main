@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { enviarDatosRegistro, obtenerDatosPerfil } from '@/services/api'; 
+import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -16,6 +16,7 @@ export function useAuthService() {
   const registrarUsuarioProceso = async (datosFormulario: any) => {
     try {
       await drizzleDb.insert(schema.usersdb).values({
+        id: datosFormulario.email, // Usamos el email como ID temporal para que no sea nulo
         nombres: datosFormulario.nombre,
         apellidos: datosFormulario.apellido,
         correo: datosFormulario.email,
@@ -43,23 +44,37 @@ export function useAuthService() {
   };
 
   // --- 2. LOGIN LOCAL ---
-  const loginUsuarioProceso = async (email: string, password: string) => {
-    try {
-      const resultado = await drizzleDb
-        .select()
-        .from(schema.usersdb)
-        .where(and(eq(schema.usersdb.correo, email), eq(schema.usersdb.contrasena, password)));
+const loginUsuarioProceso = async (email: string, password: string) => {
+  try {
+    // 1. Validar con el servidor. 
+    // Como ya desencriptamos en api.js, 'respuestaApi' YA ES el objeto con ID y Token.
+    const respuestaApi = await enviarDatosLogin(email, password);
 
-      if (resultado.length > 0) {
-        setUsers(resultado[0]); 
-        router.replace("/home"); 
-      } else {
-        alert("Correo o contraseña incorrectos.");
-      }
-    } catch (error) {
-      console.error("Error en login:", error);
+    if (respuestaApi && respuestaApi.Token) {
+      // 2. Limpiar sesión anterior
+      await drizzleDb.delete(schema.usersdb);
+
+      // 3. INSERTAR solo ID y TOKEN (como pediste)
+      await drizzleDb.insert(schema.usersdb).values({
+        id: respuestaApi.Id, // ID 
+        token: respuestaApi.Token,    // Token de sesión
+        correo: email,
+        contrasena: password,
+        nombres: "",
+        apellidos: "",
+        telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
+        deviceId: ""
+      });
+
+      console.log("✅ ID y Token guardados en SQLite");
+      
+      setUsers({ id: respuestaApi.usuario.id }); 
     }
-  };
+  } catch (error) {
+    console.error("Error en login local:", error);
+    alert("No se pudo iniciar sesión.");
+  }
+};
 
   // --- 3. PROCESO PARA GOOGLE (UPSERT) ---
   //Aqui el code es de forma nativa por incompativilidades en el desarrollo
@@ -100,54 +115,74 @@ export function useAuthService() {
   }
 };
 
-  //4. Función para sincronizar la base de datos local
-  const sincronizarPerfil = async (userId: string, correo: string) => {
-    try {
-      // 1. Pedir a la API (Datos frescos)
-      const datosApi = await obtenerDatosPerfil(userId);
+ // --- 4. Función para sincronizar la base de datos local ---
+const sincronizarPerfil = async (userId: string, correo: string, token: string) => {
+  try {
+    // 1. Pedir a la API usando el TOKEN (ya no enviamos el userId por seguridad)
+    const datosApi = await obtenerDatosPerfil(token);
 
-      // 2. Guardar en SQLite y OBTENER el resultado actualizado
-      // Cambié drizzleDb por db para ser consistente con tus errores previos
-      const filasActualizadas = await drizzleDb
-        .update(schema.usersdb)
-        .set({
-          nombres: datosApi.nombres,
-          apellidos: datosApi.apellidos,
-          telefono: datosApi.telefono,
-          correo: datosApi.email,
-          token: datosApi.token || null,
-        })
-        .where(eq(schema.usersdb.correo, correo))
-        .returning(); // <--- IMPORTANTE: Esto retorna el registro actualizado
+    console.log("Perfilxd: ", datosApi);
 
-      // 3. Actualizar el Contexto Global
-      // Usamos el primer elemento del array que devuelve .returning()
-      if (filasActualizadas.length > 0) {
-        setUsers(filasActualizadas[0]);
-      } else {
-        // Si por alguna razón no se actualizó (ej. no existía el correo), 
-        // usamos lo que vino de la API para que la UI no falle.
-        setUsers(datosApi);
-      }
+    if (!datosApi) throw new Error("No se recibieron datos del servidor");
 
-      console.log("✅ SQLite y Contexto sincronizados");
-      return datosApi;
+    // 2. Guardar en SQLite (MAPEANDO MAYÚSCULAS DE .NET A MINÚSCULAS DE TU SCHEMA)
+    const filasActualizadas = await drizzleDb
+      .update(schema.usersdb)
+      .set({
+        nombres: datosApi.Nombre || "",   // .NET manda 'Nombre'
+        apellidos: datosApi.Apellido || "", 
+        telefono: datosApi.Telefono || "",
+        correo: datosApi.Email || correo,
+        // Mantener el token actual si el API no manda uno nuevo
+        token: token 
+      })
+      .where(eq(schema.usersdb.id, userId))
+      .returning();
 
-    } catch (error) {
-      console.error("❌ Error sincronización:", error);
+    // 3. Actualizar el Contexto Global
+    if (filasActualizadas.length > 0) {
+      setUsers(filasActualizadas[0]);
+      console.log("✅ SQLite y Contexto sincronizados con datos frescos");
+    } else {
+      // Si por alguna razón no estaba el registro (pasa poco), lo creamos
+      const nuevoRegistro = await drizzleDb.insert(schema.usersdb).values({
+        id: userId,
+        correo: datosApi.Email || correo,
+        nombres: datosApi.Nombre || "",
+        apellidos: datosApi.Apellido || "",
+        telefono: datosApi.Telefono || "",
+        contrasena: "********", // No nos llega la contraseña real por seguridad
+        token: token
+      }).returning();
       
-      // Si falla la red, buscamos en local para no dejar la pantalla en blanco
-      const dataLocal = await drizzleDb
-        .select()
-        .from(schema.usersdb)
-        .where(eq(schema.usersdb.correo, correo))
-        .get();
-      
-      if (dataLocal) setUsers(dataLocal);
-      return dataLocal;
+      setUsers(nuevoRegistro[0]);
     }
+
+    return datosApi;
+
+  } catch (error) {
+    console.error("❌ Error sincronización:", error);
+    
+    // Si falla (por falta de red), recuperamos lo que ya hay en SQLite
+    const dataLocal = await drizzleDb
+      .select()
+      .from(schema.usersdb)
+      .where(eq(schema.usersdb.id, userId))
+      .limit(1);
+    
+    if (dataLocal.length > 0) {
+        setUsers(dataLocal[0]);
+        return dataLocal[0];
+    }
+    return null;
+  }
+};
+
+// Nueva función para obtener el usuario local sin errores de scope
+  const obtenerUsuarioLocal = async () => {
+    return await drizzleDb.select().from(schema.usersdb).limit(1);
   };
 
-  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil };
+  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal };
 }
 

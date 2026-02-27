@@ -33,6 +33,8 @@ const handleLogin = async () => {
     // Esta es la función que definimos en el paso anterior
     const respuestaApi = await enviarDatosLogin(email, password);
 
+    console.log("respuestaApi: ", respuestaApi)
+
     if (respuestaApi) {
       // 3. Si el login en .NET es exitoso, guardamos en SQLite local
       // Aquí usas tu proceso de servicio de base de datos

@@ -1,5 +1,5 @@
 @echo off
-set ADB_PATH=C:\Users\PC\AppData\Local\Android\Sdk\platform-tools\adb.exe
+set ADB_PATH=C:\Users\INFEMOV\AppData\Local\Android\Sdk\platform-tools\adb.exe
 set PACKAGE=com.infemov.appmovil
 set DB_NAME=bdMovil
 set LOCAL_NAME=db_proyecto.db
