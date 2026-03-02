@@ -5,7 +5,7 @@ export const usersdb = sqliteTable('usersdb', {
   id: text('id').primaryKey(), // ID 
   nombres: text('nombres'),    // Quitamos .notNull() para evitar errores si vienen vacíos
   apellidos: text('apellidos'),
-  correo: text('correo').notNull().unique(),
+  correo: text('correo').unique(),
   telefono: text('telefono'),
   contrasena: text('contrasena').notNull(), // Esta sí es obligatoria
   token: text('token'),

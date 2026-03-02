@@ -47,7 +47,6 @@ const handleLogin = async () => {
     Alert.alert("Error de Autenticación", error.message);
     console.error(error);
   }
-
 };
 
 console.log("Usuarios disponibles:", users);
@@ -84,7 +83,8 @@ console.log("Usuarios disponibles:", users);
         </TouchableOpacity>
 
       <MultiAccount> Entrar Con: </MultiAccount>
-      <BtnLoginGoogle/>
+      <BtnLoginGoogle /*Boton de google*/ 
+      />
 
 
     </Container>   

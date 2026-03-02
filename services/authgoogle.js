@@ -1,5 +1,6 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { desencriptarDatos } from './api';
 
 
 // Definimos la base de la URL para poder reutilizarla
@@ -31,17 +32,23 @@ export const enviarLoginGoogle = async (accessToken, idToken) => {
     const data = await response.json();
     console.log("Respuesta completa del backend:", data);
     
-    // Aquí esperamos que el backend nos devuelva algo como: 
-    // { Token: "eyJhbGciOi..." } (tu C# parece devolver "Token" o "token")
-    const jwtToken = data?.token || data?.Token;
+  // 1. Extraemos el string cifrado que viene en la propiedad 'Data' (o 'data')
+  const base64Cifrado = data?.Data || data?.data;
 
-    if (jwtToken) { 
-      // Guardamos el token propio del backend
-      await AsyncStorage.setItem('userToken', jwtToken); 
-      console.log("Login exitoso en API, token guardado"); 
-    } else { 
-      console.log("El backend no devolvió accessToken/Token");   
-    }
+  if (base64Cifrado) {
+      // 2. Usamos tu función de desencriptar
+      const datosDescifrados = desencriptarDatos(base64Cifrado);
+      console.log("Datos ya descifrados:", datosDescifrados);
+
+      // 3. Ahora sí, accedemos al Token (C# lo envía con 'T' mayúscula según tu objeto)
+      const jwtToken = datosDescifrados?.Token || datosDescifrados?.token;
+
+      if (jwtToken) {
+          await AsyncStorage.setItem('userToken', jwtToken);
+          console.log("✅ Login exitoso y token guardado");
+          return { token: jwtToken }; // Retornamos el objeto con el id y token como quieres
+      }
+  }
 
     console.log("Token del backend (token):", jwtToken);
     console.log("Login exitoso en API");

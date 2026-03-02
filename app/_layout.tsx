@@ -1,65 +1,71 @@
 import { Stack } from 'expo-router';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { SQLiteProvider, openDatabaseSync } from 'expo-sqlite';
+import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { UserProvider } from "../components/UserContext";
 
 // Definimos el nombre de la base de datos de forma global
 export const BaseDatos = 'bdMovil';
 
-export default function Layout() {
-  const [isReady, setIsReady] = useState(false);
+/**
+ * Función de inicialización de la base de datos.
+ * Se ejecuta una sola vez cuando el SQLiteProvider se monta.
+ * Esto garantiza que la conexión sea única y estable para toda la app.
+ */
+async function initializeDatabase(db: SQLiteDatabase) {
+  try {
+    console.log("🛠️ [SQLite] Iniciando configuración de tablas...");
+    
+    // Configuramos el modo WAL para mejor rendimiento en escrituras concurrentes
+    await db.execAsync(`PRAGMA journal_mode = WAL;`);
 
-  useEffect(() => {
-    async function setup() {
-      try {
-        // Abrimos la conexión dentro del efecto
-        const db = openDatabaseSync(BaseDatos);
-        
-        // Ejecutamos la creación
-        await db.execAsync(`
-          PRAGMA journal_mode = WAL;
-          CREATE TABLE IF NOT EXISTS usersdb (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombres TEXT NOT NULL,
-            apellidos TEXT NOT NULL,
-            correo TEXT NOT NULL UNIQUE,
-            telefono TEXT NOT NULL,
-            contrasena TEXT NOT NULL,
-            token TEXT,
-            deviceId TEXT
-          );
-        `);
-        
-        console.log("✅ [SQLite] Tabla preparada correctamente");
-        setIsReady(true);
-      } catch (error) {
-        console.error("❌ [SQLite] Error en el setup:", error);
-        // Incluso si falla, dejamos que la app intente cargar para ver el error en pantalla
-        setIsReady(true); 
-      }
-    }
-    setup();
-  }, []);
-
-  if (!isReady) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
+    // Creamos la tabla con las restricciones necesarias
+    // Nota: 'correo' es UNIQUE para que el 'onConflict' de Drizzle/SQLite funcione
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS usersdb (
+        id INTEGER PRIMARY KEY,
+        nombres TEXT,
+        apellidos TEXT,
+        correo TEXT UNIQUE,
+        telefono TEXT,
+        contrasena TEXT NOT NULL,
+        token TEXT,
+        deviceId TEXT
+      );
+    `);
+    
+    console.log("✅ [SQLite] Base de datos y tablas preparadas correctamente");
+  } catch (error) {
+    console.error("❌ [SQLite] Error crítico en initializeDatabase:", error);
+    throw error; // Suspense capturará esto si es necesario
   }
+}
 
+export default function Layout() {
   return (
-    <Suspense fallback={<ActivityIndicator size="large" />}>
-      {/* SQLiteProvider permite que useSQLiteContext funcione en tus servicios */}
-      <SQLiteProvider databaseName={BaseDatos} useSuspense>
+    // Suspense mostrará el fallback mientras initializeDatabase termina su ejecución
+    <Suspense 
+      fallback={
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#0000ff" />
+        </View>
+      }
+    >
+      {/* SQLiteProvider centraliza la conexión. 
+          onInit: Ejecuta la creación de tablas de forma segura.
+          useSuspense: Bloquea el renderizado de los hijos hasta que la DB esté lista.
+      */}
+      <SQLiteProvider 
+        databaseName={BaseDatos} 
+        onInit={initializeDatabase} 
+        useSuspense
+      >
         <UserProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" options={{ title: "Login" }} />
             <Stack.Screen name="register" options={{ title: "Registro" }} />
-            {/* El grupo que contiene la barra inferior */}
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/* Grupo de pestañas principales tras el login */}
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
         </UserProvider>
       </SQLiteProvider>

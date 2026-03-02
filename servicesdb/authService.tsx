@@ -80,37 +80,48 @@ const loginUsuarioProceso = async (email: string, password: string) => {
   //Aqui el code es de forma nativa por incompativilidades en el desarrollo
  const guardarUsuarioEnSQLite = async (datos: { nombres: string, apellidos: string, correo: string, token: string }) => {
   try {
-    console.log("💾 Iniciando guardado con bypass de seguridad...");
-
-    // 1. Si db es nulo, no disparamos nada para evitar el crash
+    // 1. Verificación Crítica
     if (!db) {
-      console.error("Conexión perdida. Reintentando en 1 segundo...");
-      setTimeout(() => guardarUsuarioEnSQLite(datos), 5000);
-      return;
+       console.error("❌ La base de datos no está disponible en este render.");
+       return;
     }
 
-    // 2. FORZAMOS el uso de execAsync (es el método más crudo y estable de SQLite)
-    // Este método no usa 'prepareAsync', por lo que NO debería lanzar el NullPointer
-    await db.execAsync(`
-      INSERT INTO usersdb (nombres, apellidos, correo, telefono, contrasena, token)
-      VALUES ('${datos.nombres}', '${datos.apellidos}', '${datos.correo}', 'S/N', 'GOOGLE_LOGIN', '${datos.token}')
-    `);
+    console.log("💾 Intentando guardado nativo para:", datos.correo);
 
-    console.log("✅ ¡GUARDADO EXITOSO CON EXEC_ASYNC!");
-    
+    // 2. Usar parámetros (?) en lugar de template strings para evitar errores de sintaxis
+    // runAsync es más estable para INSERT que execAsync
+    await db.runAsync(
+      `INSERT INTO usersdb (nombres, apellidos, correo, telefono, contrasena, token) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        datos.nombres || 'Google User',
+        datos.apellidos || '',
+        datos.correo || '',
+        'S/N',
+        'GOOGLE_LOGIN',
+        datos.token
+      ]
+    );
+
+    console.log("✅ ¡GUARDADO EXITOSO!");
     setUsers({ ...datos, telefono: "S/N", contrasena: "GOOGLE_LOGIN" });
     router.replace("/home");
 
   } catch (error: any) {
-    // Si el error es "UNIQUE constraint", significa que ya existe, así que hacemos el UPDATE
     if (error.message.includes("UNIQUE")) {
-       await db.execAsync(`
-         UPDATE usersdb SET token = '${datos.token}' WHERE correo = '${datos.correo}';
-       `);
-       console.log("✅ ¡TOKEN ACTUALIZADO!");
-       router.replace("/home");
+      console.log("🔄 El usuario ya existe, actualizando token...");
+      try {
+        await db.runAsync(
+          `UPDATE usersdb SET token = ? WHERE correo = ?`,
+          [datos.token, datos.correo]
+        );
+        console.log("✅ ¡TOKEN ACTUALIZADO!");
+        router.replace("/home");
+      } catch (updateError: any) {
+        console.error("🛑 Error en el UPDATE:", updateError.message);
+      }
     } else {
-       console.error("🛑 Error persistente:", error.message);
+      console.error("🛑 Error persistente en SQLite:", error.message);
     }
   }
 };

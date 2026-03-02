@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://192.168.0.137:5254/api/auth';
+const API_URL = 'http://100.116.49.102:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -9,24 +9,33 @@ export const desencriptarDatos = (datosCifrados) => {
   try {
     if (!datosCifrados) return null;
 
-    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
-    
-    // IMPORTANTE: Asegúrate de que datosCifrados sea un string.
-    // Usamos CryptoJS.AES.decrypt(string, key, ...)
-    const bytes = CryptoJS.AES.decrypt(datosCifrados, key, {
+    // 1. Parseamos la llave exactamente como bytes UTF8
+    const key = CryptoJS.enc.Utf8.parse("k3P9zR7mW2vL5xN8");
+
+    // 2. IMPORTANTE: Para que coincida con C# ECB, debemos pasar el string 
+    // directamente a decrypt, pero asegurar que el modo y padding sean exactos.
+    const decrypted = CryptoJS.AES.decrypt(datosCifrados, key, {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7
     });
 
-    const textoDecodificado = bytes.toString(CryptoJS.enc.Utf8);
-    
+    // 3. Convertimos a UTF8
+    const textoDecodificado = decrypted.toString(CryptoJS.enc.Utf8);
+
+    // LOG DE SEGURIDAD: Esto te dirá qué está saliendo realmente
+    console.log("🔓 Texto extraído:", textoDecodificado);
+
     if (!textoDecodificado) {
-        throw new Error("No se pudo decodificar el texto (posible llave incorrecta)");
+      // Si falla, intentamos una conversión de emergencia a Latin1 
+      // por si hay problemas de encoding entre .NET y JS
+      const fallback = decrypted.toString(CryptoJS.enc.Latin1);
+      if (fallback && fallback.includes('{')) return JSON.parse(fallback);
+      return null;
     }
 
     return JSON.parse(textoDecodificado);
   } catch (error) {
-    console.error("❌ Error al desencriptar:", error.message);
+    console.error("❌ Error en desencriptación:", error.message);
     return null;
   }
 };
@@ -141,16 +150,22 @@ export const obtenerDatosPerfil = async (token) => {
       },
     });
 
+    console.log("Header enviado:", token);
+
     if (!response.ok) {
+        console.log("Error Status:", response.status); // 👈 Agrega esto para ver si es 404, 500, etc.
         if(response.status === 401) throw new Error("Sesión expirada");
-        throw new Error("Error en la comunicación con el servidor");
+        throw new Error(`Error del servidor: ${response.status}`);
     }
 
     // 2. Recibir { Data: "..." }
     const resultadoDelServidor = await response.json(); 
+    console.log("Sin desencriptar", resultadoDelServidor)
 
     // 3. Desencriptar la respuesta de SQL Server
-    const dataLimpia = desencriptarDatos(resultadoDelServidor.Data);
+    const dataLimpia = desencriptarDatos(resultadoDelServidor.data);
+    console.log("Con encriptacion",dataLimpia)
+
 
     console.log("✅ Perfil recuperado de SQL Server:", dataLimpia);
     return dataLimpia; 

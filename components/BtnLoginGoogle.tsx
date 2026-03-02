@@ -50,6 +50,7 @@ export default function BtnLoginGoogle() {
         const idToken = response.authentication?.idToken || response.params?.id_token;
         
         console.log("¡ACCESS TOKEN RECIBIDO!:", accessToken);
+        console.log("¡IDTOKEN RECIBIDO!:", idToken);
 
         if (!accessToken) {
           console.log("No se pudo obtener el accessToken");
