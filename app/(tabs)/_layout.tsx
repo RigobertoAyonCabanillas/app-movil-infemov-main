@@ -20,6 +20,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="creditos"
+        options={{
+          title: 'Creditos',
+          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
+        }}
+      />
     </Tabs>
     )   
 }
