@@ -12,7 +12,8 @@ export default function Registro() {
   const [nombre, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
-  const [apellido, setLastName] = useState("")
+  const [apellidoPaterno, setLastNameP] = useState("")
+  const [apellidoMaterno, setLastNameM] = useState("")
   const [telefono, setNumberPhone] = useState("")
   const [secure, setSecure] = useState(true);
 
@@ -23,7 +24,7 @@ const { registrarUsuarioProceso } = useAuthService();
  //Funcion principal del formulario
  const handlRegister = async () => {
   // 1. Validación de campos existentes
-  if (!nombre || !email || !password || !apellido || !telefono) {
+  if (!nombre || !email || !password || !apellidoPaterno || !apellidoMaterno || !telefono) {
     alert("Todos los campos son obligatorios");
     return;
   }
@@ -48,7 +49,8 @@ const { registrarUsuarioProceso } = useAuthService();
     // Importante: Los nombres de las propiedades deben coincidir con lo que espera tu API .NET
     const NewUser = { 
       nombre, 
-      apellido, 
+      apellidoPaterno, 
+      apellidoMaterno,
       email, 
       telefono, 
       password, 
@@ -88,9 +90,16 @@ const { registrarUsuarioProceso } = useAuthService();
         </FieldGroup>
 
         <FieldGroup /*Contenedor para llenar Apellidos*/>
-            <Fields> Apellidos </Fields>
+            <Fields> Apellido Paterno </Fields>
             <TextInputEntrada
-            onChangeText={setLastName}
+            onChangeText={setLastNameP}
+            />
+        </FieldGroup>
+
+           <FieldGroup /*Contenedor para llenar Apellidos*/>
+            <Fields> Apellido Materno </Fields>
+            <TextInputEntrada
+            onChangeText={setLastNameM}
             />
         </FieldGroup>
 

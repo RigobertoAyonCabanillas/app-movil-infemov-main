@@ -32,32 +32,35 @@ export const IconButton = styled.TouchableOpacity`
   border-radius: 50px;
 `;
 
+interface TableRowProps {
+  isHeader?: boolean;
+}
+
+interface TableCellProps {
+  isHeader?: boolean;
+  flexWeight?: number; // Para controlar el ancho de la columna
+}
+
 export const TableContainer = styled.View`
   background-color: #fff;
-  border-radius: 10px;
+  border-radius: 12px;
+  border: 1px solid #e1e4e8;
   overflow: hidden;
-  margin-top: 10px;
-  border: 1px solid #ddd;
+  width: 100%;
 `;
-
-// 1. Definimos qué props puede recibir el componente
-interface TableRowProps {
-  isHeader?: boolean; // El '?' significa que es opcional
-}
 
 export const TableRow = styled.View<TableRowProps>`
   flex-direction: row;
+  padding: 12px 8px;
+  background-color: ${(props: TableRowProps) => (props.isHeader ? '#f1f3f5' : '#ffffff')};
   border-bottom-width: 1px;
-  border-bottom-color: #eee;
-  padding: 12px;
-  /* Especificamos el tipo dentro de la función de flecha */
-  background-color: ${(props: TableRowProps) => (props.isHeader ? '#f8f9fa' : '#fff')};
+  border-bottom-color: #f1f3f5;
 `;
 
-export const TableCell = styled.Text`
-  flex: 1;
+export const TableCell = styled.Text<TableCellProps>`
+  flex: ${(props: TableCellProps) => props.flexWeight || 1};
   text-align: center;
-  font-size: 13px;  
-  font-weight: ${(props: TableRowProps) => props.isHeader ? 'bold' : 'normal'};
-  color: ${(props: TableRowProps) => props.isHeader ? '#333' : '#666'};
+  font-size: 10px; /* Reducimos el tamaño para que quepan 5 columnas */
+  color: ${(props: TableCellProps) => (props.isHeader ? '#495057' : '#212529')};
+  font-weight: ${(props: TableCellProps) => (props.isHeader ? '700' : '400')};
 `;

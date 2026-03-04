@@ -25,13 +25,31 @@ async function initializeDatabase(db: SQLiteDatabase) {
       CREATE TABLE IF NOT EXISTS usersdb (
         id INTEGER PRIMARY KEY,
         nombres TEXT,
-        apellidos TEXT,
+        apellidoPaterno TEXT,
+        apellidoMaterno TEXT,
         correo TEXT UNIQUE,
         telefono TEXT,
         contrasena TEXT NOT NULL,
         token TEXT,
         deviceId TEXT
       );
+      CREATE TABLE IF NOT EXISTS membresiasdb (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folio TEXT,
+        tipo TEXT,
+        fechaInicio TEXT,
+        fechaFin TEXT,
+        status INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS creditosdb (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      folioCredito TEXT,
+      paquete TEXT,
+      tipo TEXT,
+      fechaPago TEXT,
+      fechaExpiracion TEXT,
+      estatus INTEGER
+    );
     `);
     
     console.log("✅ [SQLite] Base de datos y tablas preparadas correctamente");

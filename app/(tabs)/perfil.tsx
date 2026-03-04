@@ -32,7 +32,7 @@ export default function Perfil() {
                 if (local && local.length > 0) {
                     // Accedemos a los datos de la primera fila de la tabla usersdb
                     await sincronizarPerfil(
-                        local[0].id || "", 
+                        local[0].id || 0, 
                         local[0].correo || "", 
                         local[0].token || ""
                     );
@@ -56,8 +56,12 @@ export default function Perfil() {
                     <Value>{users?.nombres || "Cargando..."}</Value>
                 </InfoRow>
                 <InfoRow>
-                    <Label>Apellidos</Label>
-                    <Value>{users?.apellidos || "Cargando..."}</Value>
+                    <Label>Apellido Paterno</Label>
+                    <Value>{users?.apellidoPaterno || "Cargando..."}</Value>
+                </InfoRow>
+                <InfoRow>
+                    <Label>Apellido Materno</Label>
+                    <Value>{users?.apellidoMaterno || "Cargando..."}</Value>
                 </InfoRow>
                 <InfoRow>
                     <Label>Correo</Label>

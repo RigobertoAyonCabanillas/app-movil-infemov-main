@@ -8,7 +8,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { UserContext } from "../components/UserContext"; 
 
 export function useAuthService() {
-  const db = useSQLiteContext();
+  const db = useSQLiteContext();//Aqui ya se usa la base de datos para los queris
   const drizzleDb = useMemo(() => drizzle(db, { schema }), [db]);
   const { users, setUsers } = useContext(UserContext);
 
@@ -16,9 +16,10 @@ export function useAuthService() {
   const registrarUsuarioProceso = async (datosFormulario: any) => {
     try {
       await drizzleDb.insert(schema.usersdb).values({
-        id: datosFormulario.email, // Usamos el email como ID temporal para que no sea nulo
+        //id: datosFormulario.email, // Usamos el email como ID temporal para que no sea nulo
         nombres: datosFormulario.nombre,
-        apellidos: datosFormulario.apellido,
+        apellidoPaterno: datosFormulario.apellidoPaterno,
+        apellidoMaterno: datosFormulario.apellidoMaterno,
         correo: datosFormulario.email,
         telefono: datosFormulario.telefono,
         contrasena: datosFormulario.password,
@@ -61,7 +62,8 @@ const loginUsuarioProceso = async (email: string, password: string) => {
         correo: email,
         contrasena: password,
         nombres: "",
-        apellidos: "",
+        apellidoPaterno: "",
+        apellidoMaterno: "",
         telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
         deviceId: ""
       });
@@ -127,7 +129,7 @@ const loginUsuarioProceso = async (email: string, password: string) => {
 };
 
  // --- 4. Función para sincronizar la base de datos local ---
-const sincronizarPerfil = async (userId: string, correo: string, token: string) => {
+const sincronizarPerfil = async (userId: number, correo: string, token: string) => {
   try {
     // 1. Pedir a la API usando el TOKEN (ya no enviamos el userId por seguridad)
     const datosApi = await obtenerDatosPerfil(token);
@@ -141,7 +143,8 @@ const sincronizarPerfil = async (userId: string, correo: string, token: string) 
       .update(schema.usersdb)
       .set({
         nombres: datosApi.Nombre || "",   // .NET manda 'Nombre'
-        apellidos: datosApi.Apellido || "", 
+        apellidoPaterno: datosApi.ApellidoPaterno || "", 
+        apellidoMaterno: datosApi.ApellidoMaterno || "", 
         telefono: datosApi.Telefono || "",
         correo: datosApi.Email || correo,
         // Mantener el token actual si el API no manda uno nuevo
@@ -160,7 +163,8 @@ const sincronizarPerfil = async (userId: string, correo: string, token: string) 
         id: userId,
         correo: datosApi.Email || correo,
         nombres: datosApi.Nombre || "",
-        apellidos: datosApi.Apellido || "",
+        apellidoPaterno: datosApi.Apellido || "",
+        apellidoMaterno: datosApi.Apellido || "",
         telefono: datosApi.Telefono || "",
         contrasena: "********", // No nos llega la contraseña real por seguridad
         token: token
@@ -192,8 +196,62 @@ const sincronizarPerfil = async (userId: string, correo: string, token: string) 
 // Nueva función para obtener el usuario local sin errores de scope
   const obtenerUsuarioLocal = async () => {
     return await drizzleDb.select().from(schema.usersdb).limit(1);
-  };
+};
 
-  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal };
+// --- 5. OBTENER MEMBRESÍAS DEL MÓVIL ROOT ---
+const obtenerMembresiasLocal = async () => {
+  try {
+    // Usamos drizzleDb que ya definiste arriba con el schema
+    const resultado = await drizzleDb.select().from(schema.membresiasdb);
+    console.log("✅ Membresías recuperadas de SQLite:", resultado.length);
+    return resultado;
+  } catch (error) {
+    console.error("❌ Error al obtener membresías locales:", error);
+    return [];
+  }
+};
+
+// --- 6. INSERTAR DATO DE PRUEBA --- //Momentaneo
+const insertarMembresiaTest = async () => {
+  try {
+    await drizzleDb.insert(schema.membresiasdb).values({
+      folio: "#TEST-001",
+      tipo: "Mensual Premium",
+      fechaInicio: "01/03/2026",
+      fechaFin: "30/03/2026",
+      status: 1 // 1 para Activo
+    });
+    console.log("✅ Registro de prueba insertado en SQLite");
+  } catch (error) {
+    console.error("❌ Error al insertar test:", error);
+  }
+};
+
+const obtenerCreditosLocal = async () => {
+  try {
+    return await drizzleDb.select().from(schema.creditosdb);
+  } catch (error) {
+    console.error("❌ Error al obtener créditos:", error);
+    return [];
+  }
+};
+
+const insertarCreditoTest = async () => {
+  try {
+    await drizzleDb.insert(schema.creditosdb).values({
+      folioCredito: "CR-9921",
+      paquete: "Paquete 50 SMT",
+      tipo: "Recarga Directa",
+      fechaPago: "03/03/2026",
+      fechaExpiracion: "03/04/2026",
+      estatus: 1
+    });
+  } catch (error) {
+    console.error("❌ Error en insert de test:", error);
+  }
+};
+
+  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal,
+  insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest };
 }
 

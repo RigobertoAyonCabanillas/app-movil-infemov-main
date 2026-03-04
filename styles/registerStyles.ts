@@ -9,7 +9,7 @@ export const FieldGroup = styled.View`
 export const Title = styled.Text`
   color: #a0c224;
   font-size: 60px;
-  margin-bottom: 50px;
+  margin-bottom: 10px;
 `;
 
 export const Fields = styled.Text`
