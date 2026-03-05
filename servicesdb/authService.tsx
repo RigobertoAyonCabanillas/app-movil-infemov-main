@@ -128,7 +128,7 @@ const loginUsuarioProceso = async (email: string, password: string) => {
   }
 };
 
- // --- 4. Función para sincronizar la base de datos local ---
+ // --- 4. Función para sincronizar la base de datos local Perfil---
 const sincronizarPerfil = async (userId: number, correo: string, token: string) => {
   try {
     // 1. Pedir a la API usando el TOKEN (ya no enviamos el userId por seguridad)
@@ -211,7 +211,7 @@ const obtenerMembresiasLocal = async () => {
   }
 };
 
-// --- 6. INSERTAR DATO DE PRUEBA --- //Momentaneo
+// --- INSERTAR DATO DE PRUEBA --- //Momentaneo
 const insertarMembresiaTest = async () => {
   try {
     await drizzleDb.insert(schema.membresiasdb).values({
@@ -227,6 +227,7 @@ const insertarMembresiaTest = async () => {
   }
 };
 
+// --- 5. OBTENER CREDITOS DEL MÓVIL ROOT ---
 const obtenerCreditosLocal = async () => {
   try {
     return await drizzleDb.select().from(schema.creditosdb);
@@ -236,6 +237,7 @@ const obtenerCreditosLocal = async () => {
   }
 };
 
+// --- INSERTAR DATO DE PRUEBA --- //Momentaneo
 const insertarCreditoTest = async () => {
   try {
     await drizzleDb.insert(schema.creditosdb).values({
@@ -251,7 +253,24 @@ const insertarCreditoTest = async () => {
   }
 };
 
+// --- ACTUALIZAR CONTRASEÑA --- //
+const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => {
+  try {
+    // Usamos drizzleDb (el que creaste con useMemo)
+    await drizzleDb
+      .update(schema.usersdb) // Asegúrate que 'usuarios' sea el nombre en tu schema.ts
+      .set({ 
+        contrasena: nuevoPassword // El campo debe coincidir con tu tabla
+      })
+      .where(eq(schema.usersdb.id, usuarioId)); // Filtra por el ID del usuario logueado
+
+    console.log("✅ Contraseña actualizada correctamente en SQLite");
+  } catch (error) {
+    console.error("❌ Error en update de password:", error);
+  }
+};
+
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal,
-  insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest };
+  insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest, actualizarPassword };
 }
 

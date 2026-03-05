@@ -17,8 +17,9 @@ export default function Creditos() {
     type Membresia = InferSelectModel<typeof schema.membresiasdb>;
 
     // Ahora para 'Creditos'
-    type Credito = InferSelectModel<typeof schema.creditosdb>;
     const [listaCreditos, setListaCreditos] = useState<Credito[]>([]);
+    type Credito = InferSelectModel<typeof schema.creditosdb>;
+    
         
     // Extraemos la función que agregamos a tu servicio
     const { obtenerMembresiasLocal, insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest } = useAuthService();
@@ -91,7 +92,7 @@ export default function Creditos() {
             </Text>
             <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#333' }}>
               {/* Aquí podrías mapear el valor real del primer registro si quisieras */}
-              {index === 0 ? "12 Pts" : (listaMembresias.length > 0 ? "Activa" : "S/N")}
+              {index === 0 ? "---" : (listaMembresias.length > 0 ? "---" : "S/N")}
             </Text>
           </View>
 
