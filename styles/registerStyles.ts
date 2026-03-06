@@ -1,4 +1,5 @@
 import { TextInput, TextInputProps } from "react-native";
+import { Picker } from '@react-native-picker/picker';
 import styled from "styled-components/native";
 
 export const FieldGroup = styled.View` 
@@ -56,4 +57,29 @@ background-color: #7da854;
  border-radius: 5px; 
  align-self: flex-start; 
  margin-left: 50px;
+`;
+
+export const PickerContainer = styled.View`
+  border-bottom-width: 1px;
+  border-bottom-color: #f1f3f5;
+  margin-bottom: 15px;
+  justify-content: center;
+  margin-left: 45px;
+`;
+
+export const StyledPicker = styled(Picker)`
+  height: 60px;
+  width: 80%;
+`;
+
+export const FechaRow = styled.View`
+  flex-direction: row;
+  justify-content: space-between;
+  width: 80%;
+`;
+
+export const InputFechaCorta = styled(TextInputEntrada)`
+  flex: 1;
+  margin-right: 5px;
+  text-align: center;
 `;

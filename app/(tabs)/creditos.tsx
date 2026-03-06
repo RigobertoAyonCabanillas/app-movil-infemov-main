@@ -13,17 +13,20 @@ export default function Creditos() {
     const [index, setIndex] = useState(0);
     // ... dentro de tu componente Creditos
     // Dile a useState que este arreglo es de tipo 'Membresia'
-    const [listaMembresias, setListaMembresias] = useState<Membresia[]>([]);
     type Membresia = InferSelectModel<typeof schema.membresiasdb>;
+    const [listaMembresias, setListaMembresias] = useState<Membresia[]>([]);
+   
 
     // Ahora para 'Creditos'
-    const [listaCreditos, setListaCreditos] = useState<Credito[]>([]);
     type Credito = InferSelectModel<typeof schema.creditosdb>;
+    const [listaCreditos, setListaCreditos] = useState<Credito[]>([]);
+    
     
         
     // Extraemos la función que agregamos a tu servicio
     const { obtenerMembresiasLocal, insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest } = useAuthService();
 
+    //Funcion para cambiar de Membresias a Creditos
     const alternarInfo = () => {    
         setIndex((prevIndex) => (prevIndex === 0 ? 1 : 0));
     };
@@ -92,7 +95,10 @@ export default function Creditos() {
             </Text>
             <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#333' }}>
               {/* Aquí podrías mapear el valor real del primer registro si quisieras */}
-              {index === 0 ? "---" : (listaMembresias.length > 0 ? "---" : "S/N")}
+              {index === 0 
+                ? (listaCreditos.length > 0 ? "---" : "S/N") 
+                : (listaMembresias.length > 0 ? "---" : "S/N")
+              }
             </Text>
           </View>
 
@@ -118,6 +124,7 @@ export default function Creditos() {
           <TableCell isHeader>Estatus</TableCell>
         </TableRow>
         
+        {/* MAPEADO DE DATOS DE SQLITE */}
         {listaCreditos.map((item) => (
           <TableRow key={item.id}>
             <TableCell>{item.folioCredito}</TableCell>

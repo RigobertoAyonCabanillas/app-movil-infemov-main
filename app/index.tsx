@@ -24,7 +24,7 @@ const { loginUsuarioProceso } = useAuthService();
 const handleLogin = async () => {
   // Validación básica de campos
   if (!email.trim() || !password.trim()) {
-    alert("Por favor, ingresa tus credenciales");
+    alert("Por favor, ingresa tus credenciales"); 
     return;
   }
 
@@ -44,9 +44,12 @@ const handleLogin = async () => {
       router.replace("/(tabs)/home");
     }
   } catch (error) {
-    Alert.alert("Error de Autenticación", error.message);
+    // Verificamos si el error es realmente un objeto con mensaje
+    const mensaje = error instanceof Error ? error.message : "Error desconocido";
+    
+    Alert.alert("Error de Autenticación", mensaje);
     console.error(error);
-  }
+    }
 };
 
 console.log("Usuarios disponibles:", users);
@@ -57,16 +60,16 @@ console.log("Usuarios disponibles:", users);
     <Container> 
         <Title> Login</Title>
       
-        <TextInputEntrada //Ingresar Nombre usuario
-         placeholder="Usuario"
+        <TextInputEntrada //Ingresar Correo usuario
+         placeholder="Correo"
          value={email}
-         onChangeText = {(text) => setEmail(text)}
+         onChangeText = {(text: string) => setEmail(text)}
          />
       
         <TextInputEntrada //Ingresar Contraseña usuario
         placeholder="Constraseña"
         value={password}
-        onChangeText = {(text) => setPassword(text)}//
+        onChangeText = {(text: string) => setPassword(text)}//
         />
        
 
