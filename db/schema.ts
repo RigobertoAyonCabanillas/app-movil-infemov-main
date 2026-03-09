@@ -10,6 +10,8 @@ export const usersdb = sqliteTable('usersdb', {
   correo: text('correo').unique(),
   telefono: text('telefono'),
   contrasena: text('contrasena').notNull(), // Esta sí es obligatoria
+  estudiante: text('estudiante'),
+  fechaNacimiento: text('fechaNacimiento'),
   token: text('token'),
   deviceId: text('deviceId'),
 });

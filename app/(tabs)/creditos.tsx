@@ -1,174 +1,253 @@
-import { router } from "expo-router";
-import { useContext, useState, useCallback } from 'react';
-import { Button, Alert, View, Text } from "react-native";
-import { Container, InfoCard, NavRow, IconButton, TableContainer, TableRow, TableCell } from "@/styles/creditosStyle";
-import { UserContext } from '../../components/UserContext'; 
-import { useFocusEffect } from 'expo-router'; // o 'react-navigation/native'
+import { useFocusEffect } from "expo-router";
+import { useState, useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { DataTable, Searchbar, PaperProvider, Menu, Divider, TextInput, Button } from 'react-native-paper'; //Libreria de DataTable
+import { Container, InfoCard, NavRow, IconButton } from "@/styles/creditosStyle";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuthService } from "@/servicesdb/authService"; // Importamos tu servicio central
+import { useAuthService } from "@/servicesdb/authService"; 
 import * as schema from '@/db/schema';
 import { InferSelectModel } from 'drizzle-orm';
 
 export default function Creditos() {
-    const [index, setIndex] = useState(0);
-    // ... dentro de tu componente Creditos
-    // Dile a useState que este arreglo es de tipo 'Membresia'
-    type Membresia = InferSelectModel<typeof schema.membresiasdb>;
-    const [listaMembresias, setListaMembresias] = useState<Membresia[]>([]);
-   
-
-    // Ahora para 'Creditos'
-    type Credito = InferSelectModel<typeof schema.creditosdb>;
-    const [listaCreditos, setListaCreditos] = useState<Credito[]>([]);
+    const [index, setIndex] = useState(0); 
+    const [searchGlobal, setSearchGlobal] = useState('');
     
-    
-        
-    // Extraemos la función que agregamos a tu servicio
-    const { obtenerMembresiasLocal, insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest } = useAuthService();
+    // Paginación
+    const [page, setPage] = useState(0);
+    const [numberOfItemsPerPageList] = useState([5, 10, 20]);
+    const [itemsPerPage, setItemsPerPage] = useState(numberOfItemsPerPageList[1]);
+    const [menuPaginationVisible, setMenuPaginationVisible] = useState(false);
 
-    //Funcion para cambiar de Membresias a Creditos
-    const alternarInfo = () => {    
-        setIndex((prevIndex) => (prevIndex === 0 ? 1 : 0));
+    // Filtros y Ordenamiento
+    const [filtrosColumna, setFiltrosColumna] = useState<{[key: string]: string}>({});
+    const [visibleMenu, setVisibleMenu] = useState<string | null>(null);
+    const [sortAsc, setSortAsc] = useState(true);
+    const [sortKey, setSortKey] = useState<string | null>(null);
+
+    const { obtenerMembresiasLocal, obtenerCreditosLocal } = useAuthService();
+    const [listaMembresias, setListaMembresias] = useState<InferSelectModel<typeof schema.membresiasdb>[]>([]);
+    const [listaCreditos, setListaCreditos] = useState<InferSelectModel<typeof schema.creditosdb>[]>([]);
+
+    const alternarTab = () => {    
+        setIndex((prev) => (prev === 0 ? 1 : 0));
+        setPage(0);
+        setFiltrosColumna({});
     };
-    
-    // Carga de datos reactiva al foco de la pestaña
-      useFocusEffect(
-      useCallback(() => {
-        let isMounted = true; // Para evitar actualizaciones en componentes desmontados
 
-    const sincronizarTodo = async () => {
-      try {
-        console.log("🔵 Iniciando sincronización única...");
-
-        // 1. Manejo de Membresías
-        const resMembresias = await obtenerMembresiasLocal();
-        if (isMounted) {
-          if (resMembresias.length === 0) {
-            await insertarMembresiaTest();
-            const nuevasM = await obtenerMembresiasLocal();
-            setListaMembresias(nuevasM);
-          } else {
-            setListaMembresias(resMembresias);
-          }
-        }
-
-        // 2. Manejo de Créditos (Con captura de error específica)
-        try {
-          const resCreditos = await obtenerCreditosLocal();
-          if (isMounted) {
-            if (resCreditos.length === 0) {
-              await insertarCreditoTest();
-              const nuevosC = await obtenerCreditosLocal();
-              setListaCreditos(nuevosC);
-            } else {
-              setListaCreditos(resCreditos);
+    useFocusEffect(useCallback(() => {
+        let isMounted = true;
+        const cargar = async () => {
+            const resM = await obtenerMembresiasLocal();
+            const resC = await obtenerCreditosLocal();
+            if (isMounted) {  
+                setListaMembresias(resM || []);
+                setListaCreditos(resC || []);
             }
-          }
-        } catch (creditError) {
-          console.error("⚠️ La tabla de créditos falló. Verifica el esquema o si la tabla existe en la DB root.");
+        };
+        cargar();
+        return () => { isMounted = false; };
+    }, []));
+
+    const datosFinales = useMemo(() => {
+        let items = index === 0 ? [...listaCreditos] : [...listaMembresias];
+        if (searchGlobal) {
+            items = items.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(searchGlobal.toLowerCase())));
         }
+        Object.keys(filtrosColumna).forEach(key => {
+            const val = filtrosColumna[key].toLowerCase();
+            if (val) items = items.filter(item => String((item as any)[key]).toLowerCase().includes(val));
+        });
+        if (sortKey) {
+            items.sort((a: any, b: any) => {
+                let vA = a[sortKey] ?? ""; let vB = b[sortKey] ?? "";
+                if (sortKey.toLowerCase().includes('fecha')) {
+                    const parseDate = (s: string) => { 
+                        if(!s) return 0;
+                        const [d,m,y] = s.split('/').map(Number); 
+                        return new Date(y, m-1, d).getTime(); 
+                    };
+                    vA = parseDate(vA); vB = parseDate(vB);
+                }
+                return sortAsc ? (vA < vB ? -1 : 1) : (vA > vB ? -1 : 1);
+            });
+        }
+        return items;
+    }, [index, listaCreditos, listaMembresias, searchGlobal, filtrosColumna, sortKey, sortAsc]);
 
-      } catch (error) {
-        console.error("❌ Error general de sincronización:", error);
-      }
-    };
+    const itemsPaginados = useMemo(() => {
+        return datosFinales.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+    }, [datosFinales, page, itemsPerPage]);
 
-    sincronizarTodo();
+    // Anchos constantes para evitar desalineación
+    const COL_WIDTH = 140;
+    const STATUS_WIDTH = 100;
 
-    return () => {
-      isMounted = false; // Limpieza al salir de la pestaña
-    };
-  }, []) // 👈 IMPORTANTE: Vacío para romper el bucle infinito
-);
+const HeaderFiltro = ({ title, id }: { title: string, id: string }) => (
+        <Menu
+            visible={visibleMenu === id}
+            onDismiss={() => setVisibleMenu(null)}
+            anchor={
+                <DataTable.Title 
+                    numeric 
+                    onPress={() => setVisibleMenu(id)}
+                    sortDirection={sortKey === id ? (sortAsc ? 'ascending' : 'descending') : undefined}
+                    style={[styles.fixedCell, styles.borderRight]}
+                >
+                    <Text style={styles.headerLabel}>{title} </Text>
+                    <Ionicons name="caret-down" size={10} color={filtrosColumna[id] ? "#007AFF" : "#888"} />
+                </DataTable.Title>
+            }
+        >
+            <Menu.Item onPress={() => { setSortKey(id); setSortAsc(true); setVisibleMenu(null); }} title="Ordenar A-Z" leadingIcon="sort-ascending" />
+            <Menu.Item onPress={() => { setSortKey(id); setSortAsc(false); setVisibleMenu(null); }} title="Ordenar Z-A" leadingIcon="sort-descending" />
+            <Divider />
+            <TextInput
+                placeholder="Filtrar..."
+                value={filtrosColumna[id] || ''}
+                onChangeText={(t) => {setFiltrosColumna(prev => ({...prev, [id]: t})); setPage(0);}}
+                style={styles.inputMini}
+                mode="outlined"
+                dense
+            />
+        </Menu>
+    );
 
-  return (
-    <Container>
-      <InfoCard>
-        <NavRow>
-          <IconButton onPress={alternarInfo}>
-            <Ionicons name="chevron-back" size={24} color="#007AFF" />
-          </IconButton>
+    return (
+     <PaperProvider>
+      <Container style={{ flex: 1 }}>
+        <InfoCard>
+          <NavRow>
+            <IconButton onPress={alternarTab}><Ionicons name="chevron-back" size={24} color="#007AFF" /></IconButton>
+            <View style={{ alignItems: 'center' }}>
+                <Text style={styles.tabLabel}>{index === 0 ? "CRÉDITOS" : "MEMBRESÍAS"}</Text>
+                <Text style={styles.bigCount}>{datosFinales.length} Total</Text>
+            </View>
+            <IconButton onPress={alternarTab}><Ionicons name="chevron-forward" size={24} color="#007AFF" /></IconButton>
+          </NavRow>
+        </InfoCard>
 
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 16, color: '#888' }}>
-              {index === 0 ? "RESUMEN CRÉDITOS" : "ESTADO MEMBRESÍA"}
-            </Text>
-            <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#333' }}>
-              {/* Aquí podrías mapear el valor real del primer registro si quisieras */}
-              {index === 0 
-                ? (listaCreditos.length > 0 ? "---" : "S/N") 
-                : (listaMembresias.length > 0 ? "---" : "S/N")
-              }
-            </Text>
-          </View>
+        <View style={styles.toolbar}>
+            <Menu
+                visible={menuPaginationVisible}
+                onDismiss={() => setMenuPaginationVisible(false)}
+                anchor={
+                    <Button mode="outlined" onPress={() => setMenuPaginationVisible(true)} style={styles.btnPage} labelStyle={{fontSize: 12}}>
+                        Ver {itemsPerPage}
+                    </Button>
+                }
+            >
+                {numberOfItemsPerPageList.map(n => (
+                    <Menu.Item key={n} onPress={() => { setItemsPerPage(n); setPage(0); setMenuPaginationVisible(false); }} title={n.toString()} />
+                ))}
+            </Menu>
+            <Searchbar 
+                placeholder="Buscar..." 
+                onChangeText={setSearchGlobal} 
+                value={searchGlobal} 
+                style={styles.search} 
+                inputStyle={styles.searchTextInput}
+            />
+        </View>
 
-          <IconButton onPress={alternarInfo}>
-            <Ionicons name="chevron-forward" size={24} color="#007AFF" />
-          </IconButton>
-        </NavRow>
-      </InfoCard>
+        <View style={styles.tableWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                {/* Eliminamos el ancho fijo del View/DataTable para que crezca con las columnas */}
+                <DataTable style={{ alignSelf: 'flex-start' }}>
+                    <DataTable.Header style={styles.headerBg}>
+                        {/* Renderizado Condicional de Columnas */}
+                        <HeaderFiltro title="Folio" id={index === 0 ? "folioCredito" : "folio"} />
+                        <HeaderFiltro title={index === 0 ? "Paquete" : "Tipo"} id={index === 0 ? "paquete" : "tipo"} />
+                        <HeaderFiltro title={index === 0 ? "Tipo" : "Inicio"} id={index === 0 ? "tipo" : "fechaInicio"} />
+                        <HeaderFiltro title={index === 0 ? "Pago" : "Vence"} id={index === 0 ? "fechaPago" : "fechaFin"} />
+                        
+                        {/* Aquí puedes agregar más columnas fácilmente */}
+                        {index === 0 && <HeaderFiltro title="Expira" id="fechaExpiracion" />}
+                        
+                        <DataTable.Title numeric style={styles.statusCell}>
+                            <Text style={styles.headerLabel}>Estatus</Text>
+                        </DataTable.Title>
+                    </DataTable.Header>
 
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
-        Historial Detallado
-      </Text>
+                    {itemsPaginados.map((item: any) => (
+                    <DataTable.Row key={item.id} style={styles.row}>
+                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                            <Text style={styles.cellText}>{index === 0 ? item.folioCredito : item.folio}</Text>
+                        </DataTable.Cell>
+                        
+                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                            <Text style={styles.cellText}>{index === 0 ? item.paquete : item.tipo}</Text>
+                        </DataTable.Cell>
 
-      {index === 0 ? (
-        /* TABLA DE CRÉDITOS  */
-        <TableContainer>
-        <TableRow isHeader>
-          <TableCell isHeader>Folio</TableCell>
-          <TableCell isHeader>Paquete</TableCell>
-          <TableCell isHeader>Tipo</TableCell>
-          <TableCell isHeader>Pago</TableCell>
-          <TableCell isHeader>Expira</TableCell>
-          <TableCell isHeader>Estatus</TableCell>
-        </TableRow>
-        
-        {/* MAPEADO DE DATOS DE SQLITE */}
-        {listaCreditos.map((item) => (
-          <TableRow key={item.id}>
-            <TableCell>{item.folioCredito}</TableCell>
-            <TableCell>{item.paquete}</TableCell>
-            <TableCell>{item.tipo}</TableCell>
-            <TableCell>{item.fechaPago}</TableCell>
-            <TableCell>{item.fechaExpiracion}</TableCell>
-            <TableCell style={{ color: item.estatus === 1 ? 'green' : 'orange' }}>
-              {item.estatus === 1 ? 'Disponible' : 'Agotado'}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableContainer>
-      ) : (
-        /* TABLA DE MEMBRESÍAS */
-        <TableContainer>
-          <TableRow isHeader>
-            <TableCell isHeader>Folio</TableCell>
-            <TableCell isHeader>Tipo</TableCell>
-            <TableCell isHeader>Inicio</TableCell>
-            <TableCell isHeader>Vence</TableCell>
-            <TableCell isHeader>Estatus</TableCell>
-          </TableRow>
+                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                            <Text style={styles.cellText}>{index === 0 ? item.tipo : item.fechaInicio}</Text>
+                        </DataTable.Cell>
 
-          {/* MAPEADO DE DATOS DE SQLITE */}
-          {listaMembresias.length > 0 ? (
-            listaMembresias.map((item) => (
-                <TableRow key={item.id}>
-                    <TableCell>{item.folio || "N/A"}</TableCell>
-                    <TableCell>{item.tipo || "S/P"}</TableCell>
-                    <TableCell>{item.fechaInicio || "--/--"}</TableCell>
-                    <TableCell>{item.fechaFin || "--/--"}</TableCell>
-                    <TableCell style={{ color: item.status === 1 ? 'green' : 'red' }}>
-                        {item.status === 1 ? 'Activo' : 'Vencido'}
-                    </TableCell>
-                </TableRow>
-            ))
-          ) : (
-            <TableRow>
-                <TableCell style={{ flex: 1, textAlign: 'center' }}>No hay registros en el móvil</TableCell>
-            </TableRow>
-          )}
-        </TableContainer>
-      )}
-    </Container>
-  );
+                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                            <Text style={styles.cellText}>{index === 0 ? item.fechaPago : item.fechaFin}</Text>
+                        </DataTable.Cell>
+
+                        {/* Fila Adaptable: Si agregas columna arriba, agrégala aquí también */}
+                        {index === 0 && (
+                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                                <Text style={styles.cellText}>{item.fechaExpiracion}</Text>
+                            </DataTable.Cell>
+                        )}
+
+                        <DataTable.Cell numeric style={styles.statusCell}>
+                            <Text style={{ 
+                                color: (index === 0 ? item.estatus : item.status) === 1 ? '#2ecc71' : '#e74c3c', 
+                                fontWeight: 'bold', 
+                                fontSize: 12 
+                            }}>
+                                {(index === 0 ? item.estatus : item.status) === 1 ? 'Activo' : 'Vencido'}
+                            </Text>
+                        </DataTable.Cell>
+                    </DataTable.Row>
+                    ))}
+                </DataTable>
+            </ScrollView>
+
+            <View style={styles.footer}>
+                <DataTable.Pagination
+                    page={page}
+                    numberOfPages={Math.ceil(datosFinales.length / itemsPerPage)}
+                    onPageChange={(p) => setPage(p)}
+                    label={`${page * itemsPerPage + 1}-${Math.min((page + 1) * itemsPerPage, datosFinales.length)} de ${datosFinales.length}`}
+                    style={styles.pagination}
+                />
+            </View>
+        </View>
+      </Container>
+     </PaperProvider>
+    );
 }
+
+const styles = StyleSheet.create({
+    toolbar: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingHorizontal: 10, gap: 10 },
+    btnPage: { borderRadius: 8, height: 45, borderColor: '#ccc', justifyContent: 'center' },
+    search: { flex: 1, height: 45, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#eee', justifyContent: 'center' },
+    searchTextInput: { fontSize: 14, height: 45, marginTop: -8, textAlignVertical: 'center' }, 
+    tabLabel: { fontSize: 12, color: '#7f8c8d', fontWeight: '600' },
+    bigCount: { fontSize: 24, fontWeight: 'bold', color: '#2c3e50' },
+    tableWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e0e0e0', marginHorizontal: 10, marginBottom: 10 },
+    headerBg: { backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e0e0e0', height: 50 },
+    headerLabel: { fontWeight: 'bold', color: '#333', fontSize: 13, textAlign: 'center' },
+    inputMini: { margin: 10, height: 40, fontSize: 12 },
+    row: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0', height: 55 },
+    cellText: { fontSize: 12, textAlign: 'center' },
+    
+    // Al usar numeric en el componente, estas propiedades de estilo ahora sí centran el contenido
+    fixedCell: { 
+        width: 140, 
+        justifyContent: 'center', 
+        alignItems: 'center' 
+    },
+    statusCell: { 
+        width: 100, 
+        justifyContent: 'center', 
+        alignItems: 'center' 
+    },
+    borderRight: { borderRightWidth: 1, borderRightColor: '#eee' },
+    footer: { borderTopWidth: 1, borderTopColor: '#e0e0e0', backgroundColor: '#fbfbfb' },
+    pagination: { justifyContent: 'flex-end', height: 50 }
+});

@@ -23,6 +23,8 @@ export function useAuthService() {
         correo: datosFormulario.email,
         telefono: datosFormulario.telefono,
         contrasena: datosFormulario.password,
+        estudiante: datosFormulario.estudiante,
+        fechaNacimiento: datosFormulario.fechaNacimiento,
         token: null, 
       });
 
@@ -64,6 +66,8 @@ const loginUsuarioProceso = async (email: string, password: string) => {
         nombres: "",
         apellidoPaterno: "",
         apellidoMaterno: "",
+        estudiante: "",
+        fechaNacimiento: "",
         telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
         deviceId: ""
       });

@@ -4,10 +4,12 @@ import { UserContext } from "../components/UserContext";
 import { BotonMostrar, Container, FechaRow, FieldGroup, Fields, InputFechaCorta, PickerContainer, StyledPicker, SubmitF, TextInputEntrada, TextoBoton, Title } from "../styles/registerStyles";
 import { useAuthService } from "@/servicesdb/authService";
 import * as Application from 'expo-application';
-import { Alert, Platform, ScrollView, KeyboardAvoidingView, TouchableOpacity, } from 'react-native';
+import { Alert, Platform, ScrollView, KeyboardAvoidingView, TouchableOpacity, View, Text } from 'react-native';
 import { Picker } from "@react-native-picker/picker";// Fecha Nacimiento
 import DateTimePicker from '@react-native-community/datetimepicker';//Rueda de fecha de namcimiento
-import PhoneInput from "react-native-phone-number-input";//Numero de celular
+//Libreriar para el numero de celular - MaskInput y CountryPicker
+import MaskInput from 'react-native-mask-input';
+import CountryPicker, { CountryCode, Country } from 'react-native-country-picker-modal';
 
 export default function Registro() {
 
@@ -22,9 +24,16 @@ export default function Registro() {
   const [esEstudiante, setEsEstudiante] = useState<number>(0); // 0: No, 1: Sí
 
 //Celular
-const [value, setValue] = useState(""); // Número formateado
-const [formattedValue, setFormattedValue] = useState(""); // Número con código (+52...)
-const phoneInput = useRef<PhoneInput>(null);
+const [countryCode, setCountryCode] = useState<CountryCode>('MX');
+const [callingCode, setCallingCode] = useState('52');
+const [telefonoLimpio, setTelefonoLimpio] = useState(''); // Solo números
+// Formato: (644) 123-4567
+const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
+
+const onSelect = (country: Country) => {
+  setCountryCode(country.cca2);
+  setCallingCode(country.callingCode[0]);
+};
 
 // Estados para los valores de fecha
 const [date, setDate] = useState(new Date());
@@ -40,6 +49,14 @@ const { registrarUsuarioProceso } = useAuthService();
   //  Validación de campos existentes
   if (!nombre || !email || !password || !apellidoPaterno || !apellidoMaterno || !telefono) {
     alert("Todos los campos son obligatorios");
+    return;
+  }
+
+  // 2. NUEVA VALIDACIÓN: Complejidad de Contraseña (Igual a tu Backend)
+  const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  
+  if (password.includes(" ") || !complejidadRegex.test(password)) {
+    alert("La contraseña no cumple con los requisitos de seguridad. Debe tener mínimo 8 caracteres, una mayúscula, una minúscula, un número y no contener espacios.");
     return;
   }
 
@@ -65,7 +82,10 @@ const { registrarUsuarioProceso } = useAuthService();
         deviceId = await Application.getIosIdForVendorAsync();
     }
 
+    //Fecha de nacimiento
     const fechaFinal = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+    //Limpiar () en numero de celular
+    const numeroLimpio = telefono.replace(/\D/g, ''); // Quita ( ) y -
 
     //  Crear el objeto con el campo deviceId incluido
     // Importante: Los nombres de las propiedades deben coincidir con lo que espera tu API .NET
@@ -73,15 +93,15 @@ const { registrarUsuarioProceso } = useAuthService();
       nombre, 
       apellidoPaterno, 
       apellidoMaterno,
-      email, 
-      telefono: formattedValue, 
+      email,
       password, 
+      telefono: `+${callingCode}${telefonoLimpio}`, // Resultado: +52 6441234567      password, 
       deviceId, // Ahora ya tiene el valor del await anterior
-      esEstudiante: esEstudiante === 1, // <--- Enviamos true si es 1, false si es 2
+      estudiante: esEstudiante === 1, // <--- Enviamos true si es 1, false si es 2
       fechaNacimiento: fechaFinal, // Así llega como string "DD/MM/AAAA" a tu API
     };
 
-    //  Proceso de Registro (SQLite + Cifrado + API)
+    // Proceso de Registro (SQLite + Cifrado + API)
     // Asegúrate que en authService.ts, registrarUsuarioProceso acepte este objeto 'NewUser'
     await registrarUsuarioProceso(NewUser);
 
@@ -173,64 +193,89 @@ const { registrarUsuarioProceso } = useAuthService();
                 onChangeText={setEmail}/>
             </FieldGroup>
 
-            <FieldGroup style={{ alignItems: 'center', width: '100%' }}> 
-                <Fields style={{ alignSelf: 'flex-start', marginLeft: '12.8%' }}>Número de Teléfono</Fields>
-                
-                <PhoneInput
-                  ref={phoneInput}
-                  // ESTO BLOQUEA LAS LETRAS: Solo permite el cambio si el texto son números
-                  value={value}
-                  defaultValue={value}
-                  defaultCode="MX"
-                  layout="first"
-                  
-                  onChangeText={(text) => {
-                    // Si el texto nuevo tiene letras, la validación falla y no hace el setValue
-                    // Por lo tanto, la letra nunca aparece en pantalla.
-                    if (/^\d*$/.test(text)) {
-                      setValue(text);
-                    }
-                  }}
+           <FieldGroup style={{ alignItems: 'center', width: '100%' }}>
+              <Fields style={{ alignSelf: 'flex-start', marginLeft: '12.8%' }}>Número de Teléfono</Fields>
+              
+              <View style={{ 
+                flexDirection: 'row', 
+                width: '82%', 
+                backgroundColor: '#f2f2f2', 
+                borderRadius: 8, 
+                borderWidth: 1, 
+                borderColor: '#bbb7b7',
+                height: 60,
+                alignItems: 'center',
+                marginTop: 10
+              }}>
+                {/* SELECTOR DE PAÍS AUTOMÁTICO */}
+                <TouchableOpacity style={{ 
+                  backgroundColor: '#7da854', 
+                  height: '100%', 
+                  paddingHorizontal: 10,
+                  flexDirection: 'row',
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  borderTopLeftRadius: 7,
+                  borderBottomLeftRadius: 7
+                }}>
+                  <CountryPicker
+                    countryCode={countryCode}
+                    withFilter
+                    withFlag
+                    withCallingCode
+                    withAlphaFilter
+                    onSelect={onSelect}
+                    visible={false} // Se activa al tocar
+                  />
+                  <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: 5 }}>
+                    +{callingCode}
+                  </Text>
+                </TouchableOpacity>
 
-                  onChangeFormattedText={(text) => setFormattedValue(text)}
-
-                  textInputProps={{
-                    maxLength: 10,
-                    keyboardType: 'number-pad',
+                {/* INPUT CON MÁSCARA QUE BLOQUEA LETRAS */}
+                <MaskInput
+                  value={telefono}
+                  onChangeText={(masked, unmasked) => {
+                    setNumberPhone(masked);
+                    setTelefonoLimpio(unmasked);
                   }}
-
-                  // --- ESTILOS PARA QUE SÍ SE VEA ---
-                  containerStyle={{ 
-                    width: '82%',                // Volvemos al ancho que cuadra con tus otros inputs
-                    height: 60,                  // Subimos un poco la altura para que no se corte el texto
-                    borderRadius: 8,
-                    backgroundColor: '#f2f2f2', 
-                    borderWidth: 1,
-                    borderColor: '#bbb7b7',
-                    alignSelf: 'center',
-                    marginTop: 10,               // Espacio con el label
-                    overflow: 'hidden'           // Evita que el contenido se salga del cuadro
+                  mask={phoneMask}
+                  keyboardType="numeric"
+                  placeholder="(000) 000-0000"
+                  style={{
+                    flex: 1,
+                    paddingHorizontal: 15,
+                    fontSize: 16,
+                    color: '#000'
                   }}
-
-                  textContainerStyle={{ 
-                    backgroundColor: '#f2f2f2',
-                    paddingVertical: 0,
-                  }}
-
-                  countryPickerButtonStyle={{
-                    backgroundColor: '#7da854',
-                    width: 60,
-                  }}
-
-                  textInputStyle={{
-                    fontSize: 16,                // Tamaño estándar para que se vea claro
-                    color: '#000',
-                    height: '100%',              // Asegura que ocupe todo el espacio vertical
-                  }}
-                  
-                  placeholder="Celular"
                 />
-              </FieldGroup>
+              </View>
+            </FieldGroup>
+
+            {/* CAMPO NUEVO: ¿Eres estudiante? */}
+          <FieldGroup>
+            <Fields>¿Eres estudiante?</Fields>
+            <PickerContainer style={{ 
+              backgroundColor: '#f2f2f2', 
+              borderRadius: 8, 
+              borderWidth: 1, 
+              borderColor: '#bbb7b7',
+              marginTop: 10,
+              width: '82%',
+              alignSelf: 'center',
+              overflow: 'hidden' // Para que el Picker respete el borde redondeado en Android
+            }}>
+              <Picker
+                selectedValue={esEstudiante}
+                onValueChange={(itemValue) => setEsEstudiante(itemValue)}
+                style={{ height: 60, width: '100%' }}
+              >
+                <Picker.Item label="Selecciona una opción..." value={0} color="#999" />
+                <Picker.Item label="Sí, soy estudiante" value={1} />
+                <Picker.Item label="No, no soy estudiante" value={2} />
+              </Picker>
+            </PickerContainer>
+          </FieldGroup>
 
             <FieldGroup>
               <Fields>Fecha de Nacimiento</Fields>

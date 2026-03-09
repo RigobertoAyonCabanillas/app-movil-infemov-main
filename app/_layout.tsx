@@ -30,6 +30,8 @@ async function initializeDatabase(db: SQLiteDatabase) {
         correo TEXT UNIQUE,
         telefono TEXT,
         contrasena TEXT NOT NULL,
+        estudiante TEXT,
+        fechaNacimiento TEXT,
         token TEXT,
         deviceId TEXT
       );
