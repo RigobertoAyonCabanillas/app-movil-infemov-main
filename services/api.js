@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth';
+const API_URL = 'http://192.168.0.137:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -78,6 +78,43 @@ export const enviarDatosRegistro = async (datos) => {
     return await response.json();
   } catch (error) {
     console.error("Error al cifrar o enviar:", error);
+    throw error;
+  }
+};
+
+//Folio para el Registro
+export const validarFolioAPI = async (folio) => {
+  try {
+    // 1. Petición al endpoint con el folio en la URL
+    const response = await fetch(`${API_URL}/validar-gimnasio/${folio}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+        throw new Error("Folio inválido");
+    }
+
+    // 2. Recibes el objeto: { data: "affc1+wLubS..." }
+    const resCifrado = await response.json();
+
+    // 3. DESENCRIPTAR AQUÍ
+    const jsonDescifrado = desencriptarDatos(resCifrado.data);
+
+    // 4. Convertimos a objeto real solo si es necesario
+    // Esto evita el "Unexpected character: o"
+    const datosFinales = typeof jsonDescifrado === 'string' 
+        ? JSON.parse(jsonDescifrado) 
+        : jsonDescifrado;
+
+    // Retornamos el objeto ya limpio: { id: 23, nombre: "empresax" }
+    return datosFinales;
+
+  } catch (error) {
+    console.error("Error al validar folio:", error);
     throw error;
   }
 };

@@ -25,6 +25,7 @@ export function useAuthService() {
         contrasena: datosFormulario.password,
         estudiante: datosFormulario.estudiante,
         fechaNacimiento: datosFormulario.fechaNacimiento,
+        gymId: datosFormulario.gymId, // superUsuario
         token: null, 
       });
 

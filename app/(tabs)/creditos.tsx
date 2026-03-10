@@ -25,6 +25,7 @@ export default function Creditos() {
     const [sortKey, setSortKey] = useState<string | null>(null);
 
     const { obtenerMembresiasLocal, obtenerCreditosLocal } = useAuthService();
+
     const [listaMembresias, setListaMembresias] = useState<InferSelectModel<typeof schema.membresiasdb>[]>([]);
     const [listaCreditos, setListaCreditos] = useState<InferSelectModel<typeof schema.creditosdb>[]>([]);
 

@@ -33,7 +33,8 @@ async function initializeDatabase(db: SQLiteDatabase) {
         estudiante TEXT,
         fechaNacimiento TEXT,
         token TEXT,
-        deviceId TEXT
+        deviceId TEXT,
+        gymId INTEGER
       );
       CREATE TABLE IF NOT EXISTS membresiasdb (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

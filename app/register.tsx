@@ -10,6 +10,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';//Rueda de f
 //Libreriar para el numero de celular - MaskInput y CountryPicker
 import MaskInput from 'react-native-mask-input';
 import CountryPicker, { CountryCode, Country } from 'react-native-country-picker-modal';
+import { validarFolioAPI } from "@/services/api";
 
 export default function Registro() {
 
@@ -39,6 +40,14 @@ const onSelect = (country: Country) => {
 const [date, setDate] = useState(new Date());
 const [show, setShow] = useState(false);
 const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
+
+//Folio - superUsuario
+const [folio, setFolio] = useState("");
+const [folioValidado, setFolioValidado] = useState(false);
+const [gymSelected, setGymSelected] = useState(null);
+const [nombreGimnasio, setNombreGimnasio] = useState("");
+// AGREGA ESTA LÍNEA:
+const [cargandoFolio, setCargandoFolio] = useState(false);
 
 //Estados de la base de datos SQLlite
 const { registrarUsuarioProceso } = useAuthService();
@@ -99,6 +108,7 @@ const { registrarUsuarioProceso } = useAuthService();
       deviceId, // Ahora ya tiene el valor del await anterior
       estudiante: esEstudiante === 1, // <--- Enviamos true si es 1, false si es 2
       fechaNacimiento: fechaFinal, // Así llega como string "DD/MM/AAAA" a tu API
+      gymId: gymSelected // Este es el ID que nos dio la API al validar el folio
     };
 
     // Proceso de Registro (SQLite + Cifrado + API)
@@ -116,6 +126,7 @@ const { registrarUsuarioProceso } = useAuthService();
   }
 
 };
+
   const onData = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || date;
     setShow(false); // Cerramos el picker
@@ -128,6 +139,29 @@ const { registrarUsuarioProceso } = useAuthService();
     setFechaTexto(f);
   };
 
+  //Logica del folio
+  const manejarValidacion = async () => {
+  if (!folio.trim()) {
+    alert("Por favor, ingresa el folio.");
+    return;
+  }
+
+  setCargandoFolio(true); // Aquí se activa el "VERIFICANDO..."
+  try {
+    const res = await validarFolioAPI(folio);
+    console.log("Folio del back", res)
+    if (res && res.id) {
+      setGymSelected(res.id); 
+      setNombreGimnasio(res.nombre);
+      setFolioValidado(true); 
+    }
+  } catch (error) {
+    alert("Folio inválido.");
+  } finally {
+    setCargandoFolio(false); // Aquí vuelve a "CONTINUAR"
+  }
+};
+
  //Funcion para validar correo correctamente
  const validarEmail = (email: string) => 
     { const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; //@antes, @despues, punto(.) despues(.mx ejemplo)
@@ -135,124 +169,144 @@ const { registrarUsuarioProceso } = useAuthService();
 
   return (
 
-      <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-      >
-        <ScrollView 
-          // Esta propiedad es clave para que los inputs y el picker respondan bien al primer toque
-          keyboardShouldPersistTaps="handled"
-          // Asegura que el contenido se estire para llenar la pantalla
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 30 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <Container> 
+     <KeyboardAvoidingView 
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  style={{ flex: 1 }}
+>
+  <ScrollView 
+    keyboardShouldPersistTaps="handled"
+    contentContainerStyle={{ flexGrow: 1, paddingBottom: 30 }}
+    showsVerticalScrollIndicator={false}
+  >
+    <Container> 
 
-            <Title> Registrarse </Title>
-            
-            <FieldGroup /*Contenedor para llenar Nombre*/>
-                <Fields> Nombre </Fields>
-                <TextInputEntrada
-                onChangeText={setUser}
-                />
+      {/* --- LÓGICA CONDICIONAL: ¿FOLIO VALIDADO? --- */}
+      {!folioValidado ? (
+        
+        /* --- VISTA A: SOLO SE MUESTRA EL FOLIO AL PRINCIPIO --- */
+        <React.Fragment>
+          <Title> Bienvenido </Title>
+          <View style={{ marginTop: 20, width: '100%', alignItems: 'center' }}>
+            <FieldGroup>
+              <Fields> Folio de Acceso </Fields>
+              <TextInputEntrada
+                placeholder="Ingresa el folio de tu gimnasio"
+                value={folio}
+                onChangeText={setFolio}
+                autoCapitalize="characters"
+              />
             </FieldGroup>
 
-            <FieldGroup /*Contenedor para llenar Apellidos*/>
-                <Fields> Apellido Paterno </Fields>
-                <TextInputEntrada
-                onChangeText={setLastNameP}
-                />
+            <FieldGroup>
+              <SubmitF onPress={manejarValidacion} disabled={cargandoFolio}>
+                <TextoBoton>{cargandoFolio ? "VERIFICANDO..." : "CONTINUAR"}</TextoBoton>
+              </SubmitF>
             </FieldGroup>
+          </View>
+        </React.Fragment>
 
-              <FieldGroup /*Contenedor para llenar Apellidos*/>
-                <Fields> Apellido Materno </Fields>
-                <TextInputEntrada
-                onChangeText={setLastNameM}
-                />
-            </FieldGroup>
+      ) : (
+        
+        /* --- VISTA B: TODO TU FORMULARIO ORIGINAL --- */
+        <React.Fragment>
+          <Title> Registrarse </Title>
+          
+          {/* Subtítulo informativo opcional */}
+          <Text style={{ textAlign: 'center', color: '#7da854', marginBottom: 10, fontWeight: 'bold' }}>
+            Gimnasio: {nombreGimnasio}
+          </Text>
 
-            <FieldGroup /*Contenedor para llenar Contraseña*/>
-                <React.Fragment>
-                    <Fields> Constraseña </Fields>
-                    <TextInputEntrada 
-                    secureTextEntry={secure} //Estado que muestra o esconde la contraseña
-                    autoCapitalize="none" //Evitar mayusculas
-                    autoCorrect={false} //evitar auto corrector
-                    onChangeText={setPassword}
-                    />
-                    <BotonMostrar onPress={() => setSecure(!secure)}>
-                        <TextoBoton>{secure ? "MOSTRAR" : "OCULTAR"}</TextoBoton> 
-                    </BotonMostrar>
-                </React.Fragment>
-            </FieldGroup>
+          <FieldGroup /*Contenedor para llenar Nombre*/>
+            <Fields> Nombre </Fields>
+            <TextInputEntrada onChangeText={setUser} />
+          </FieldGroup>
 
-            <FieldGroup /*Contenedor para llenar Correo*/>
-                <Fields> Email </Fields>
-                <TextInputEntrada 
-                keyboardType="email-address"
-                onChangeText={setEmail}/>
-            </FieldGroup>
+          <FieldGroup /*Contenedor para llenar Apellidos*/>
+            <Fields> Apellido Paterno </Fields>
+            <TextInputEntrada onChangeText={setLastNameP} />
+          </FieldGroup>
 
-           <FieldGroup style={{ alignItems: 'center', width: '100%' }}>
-              <Fields style={{ alignSelf: 'flex-start', marginLeft: '12.8%' }}>Número de Teléfono</Fields>
-              
-              <View style={{ 
-                flexDirection: 'row', 
-                width: '82%', 
-                backgroundColor: '#f2f2f2', 
-                borderRadius: 8, 
-                borderWidth: 1, 
-                borderColor: '#bbb7b7',
-                height: 60,
+          <FieldGroup>
+            <Fields> Apellido Materno </Fields>
+            <TextInputEntrada onChangeText={setLastNameM} />
+          </FieldGroup>
+
+          <FieldGroup>
+            <React.Fragment>
+              <Fields> Constraseña </Fields>
+              <TextInputEntrada 
+                secureTextEntry={secure}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setPassword}
+              />
+              <BotonMostrar onPress={() => setSecure(!secure)}>
+                <TextoBoton>{secure ? "MOSTRAR" : "OCULTAR"}</TextoBoton> 
+              </BotonMostrar>
+            </React.Fragment>
+          </FieldGroup>
+
+          <FieldGroup>
+            <Fields> Email </Fields>
+            <TextInputEntrada 
+              keyboardType="email-address"
+              onChangeText={setEmail}
+            />
+          </FieldGroup>
+
+          <FieldGroup style={{ alignItems: 'center', width: '100%' }}>
+            <Fields style={{ alignSelf: 'flex-start', marginLeft: '12.8%' }}>Número de Teléfono</Fields>
+            <View style={{ 
+              flexDirection: 'row', 
+              width: '82%', 
+              backgroundColor: '#f2f2f2', 
+              borderRadius: 8, 
+              borderWidth: 1, 
+              borderColor: '#bbb7b7',
+              height: 60,
+              alignItems: 'center',
+              marginTop: 10
+            }}>
+              <TouchableOpacity style={{ 
+                backgroundColor: '#7da854', 
+                height: '100%', 
+                paddingHorizontal: 10,
+                flexDirection: 'row',
+                justifyContent: 'center', 
                 alignItems: 'center',
-                marginTop: 10
+                borderTopLeftRadius: 7,
+                borderBottomLeftRadius: 7
               }}>
-                {/* SELECTOR DE PAÍS AUTOMÁTICO */}
-                <TouchableOpacity style={{ 
-                  backgroundColor: '#7da854', 
-                  height: '100%', 
-                  paddingHorizontal: 10,
-                  flexDirection: 'row',
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  borderTopLeftRadius: 7,
-                  borderBottomLeftRadius: 7
-                }}>
-                  <CountryPicker
-                    countryCode={countryCode}
-                    withFilter
-                    withFlag
-                    withCallingCode
-                    withAlphaFilter
-                    onSelect={onSelect}
-                    visible={false} // Se activa al tocar
-                  />
-                  <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: 5 }}>
-                    +{callingCode}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* INPUT CON MÁSCARA QUE BLOQUEA LETRAS */}
-                <MaskInput
-                  value={telefono}
-                  onChangeText={(masked, unmasked) => {
-                    setNumberPhone(masked);
-                    setTelefonoLimpio(unmasked);
-                  }}
-                  mask={phoneMask}
-                  keyboardType="numeric"
-                  placeholder="(000) 000-0000"
-                  style={{
-                    flex: 1,
-                    paddingHorizontal: 15,
-                    fontSize: 16,
-                    color: '#000'
-                  }}
+                <CountryPicker
+                  countryCode={countryCode}
+                  withFilter withFlag withCallingCode withAlphaFilter
+                  onSelect={onSelect}
+                  visible={false}
                 />
-              </View>
-            </FieldGroup>
+                <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: 5 }}>
+                  +{callingCode}
+                </Text>
+              </TouchableOpacity>
 
-            {/* CAMPO NUEVO: ¿Eres estudiante? */}
+              <MaskInput
+                value={telefono}
+                onChangeText={(masked, unmasked) => {
+                  setNumberPhone(masked);
+                  setTelefonoLimpio(unmasked);
+                }}
+                mask={phoneMask}
+                keyboardType="numeric"
+                placeholder="(000) 000-0000"
+                style={{
+                  flex: 1,
+                  paddingHorizontal: 15,
+                  fontSize: 16,
+                  color: '#000'
+                }}
+              />
+            </View>
+          </FieldGroup>
+
           <FieldGroup>
             <Fields>¿Eres estudiante?</Fields>
             <PickerContainer style={{ 
@@ -263,7 +317,7 @@ const { registrarUsuarioProceso } = useAuthService();
               marginTop: 10,
               width: '82%',
               alignSelf: 'center',
-              overflow: 'hidden' // Para que el Picker respete el borde redondeado en Android
+              overflow: 'hidden'
             }}>
               <Picker
                 selectedValue={esEstudiante}
@@ -277,40 +331,39 @@ const { registrarUsuarioProceso } = useAuthService();
             </PickerContainer>
           </FieldGroup>
 
-            <FieldGroup>
-              <Fields>Fecha de Nacimiento</Fields>
-              
-              <TouchableOpacity onPress={() => setShow(true)}>
-                <TextInputEntrada
-                  editable={false}
-                  value={fechaTexto}
-                  placeholder="Selecciona tu fecha"
-                />
-              </TouchableOpacity>
+          <FieldGroup>
+            <Fields>Fecha de Nacimiento</Fields>
+            <TouchableOpacity onPress={() => setShow(true)}>
+              <TextInputEntrada
+                editable={false}
+                value={fechaTexto}
+                placeholder="Selecciona tu fecha"
+              />
+            </TouchableOpacity>
 
-              {show && (
-                <DateTimePicker
-                  value={date}
-                  mode="date"
-                  // 'spinner' activa el estilo de rueda que buscas
-                  display={Platform.OS === 'ios' ? 'spinner' : 'spinner'} 
-                  onChange={onData}
-                  maximumDate={new Date()}
-                  // Puedes personalizar colores si estás en iOS
-                  textColor="black" 
-                />
-              )}
-            </FieldGroup>
+            {show && (
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'spinner'} 
+                onChange={onData}
+                maximumDate={new Date()}
+                textColor="black" 
+              />
+            )}
+          </FieldGroup>
 
-            <FieldGroup /*Boton para enviar formulario*/>
-                <SubmitF onPress={handlRegister}>
-                    <TextoBoton> Registrar </TextoBoton> 
-                </SubmitF>
-            </FieldGroup>
+          <FieldGroup /*Boton para enviar formulario*/>
+            <SubmitF onPress={handlRegister}>
+              <TextoBoton> Registrar </TextoBoton> 
+            </SubmitF>
+          </FieldGroup>
+        </React.Fragment>
+      )}
 
-        </Container>  
-      </ScrollView>
-    </KeyboardAvoidingView> 
+    </Container>  
+  </ScrollView>
+</KeyboardAvoidingView> 
   );
 }
 
