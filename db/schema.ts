@@ -14,7 +14,7 @@ export const usersdb = sqliteTable('usersdb', {
   fechaNacimiento: text('fechaNacimiento'),
   token: text('token'),
   deviceId: text('deviceId'),
-  gymId: integer("gymid"), // Añadir este campo si no existe
+  gymId: integer("gymId"), // Añadir este campo si no existe
 });
 
 export const membresiasdb = sqliteTable('membresiasdb', {
@@ -25,6 +25,7 @@ export const membresiasdb = sqliteTable('membresiasdb', {
   fechaInicio: text('fechaInicio'),
   fechaFin: text('fechaFin'),
   status: integer('status'), // SQLite no tiene boolean real, usa 0 o 1
+  userId: integer('userId'),
 });
 
 export const creditosdb = sqliteTable('creditosdb', {

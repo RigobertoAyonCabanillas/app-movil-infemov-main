@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://192.168.0.137:5254/api/auth';
+const API_URL = 'http://100.116.49.102:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -211,4 +211,29 @@ export const obtenerDatosPerfil = async (token) => {
     console.error("❌ Falló el flujo de perfil:", error.message);
     throw error;
   }
+};
+
+// Tabla de Membresias
+export const sincronizarMembresiasDesdeApi = async (usuarioId) => {
+    try {
+        const response = await fetch(`${API_URL}/mis-membresias/${usuarioId}`);
+        const result = await response.json();
+
+      if (result.data) {
+        const datosClaros = desencriptarDatos(result.data);
+        
+        // Si datosClaros ya es un objeto, no uses JSON.parse
+        const objetoData = (typeof datosClaros === 'string') 
+            ? JSON.parse(datosClaros) 
+            : datosClaros;
+
+        const { Membresias } = objetoData;
+        console.log("Membresias listas:", Membresias);
+        return Membresias;
+      }
+        
+    } catch (error) {
+        console.error("Error en fetch API:", error);
+        throw error;
+    }
 };

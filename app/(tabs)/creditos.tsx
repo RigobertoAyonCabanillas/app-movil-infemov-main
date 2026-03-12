@@ -24,7 +24,7 @@ export default function Creditos() {
     const [sortAsc, setSortAsc] = useState(true);
     const [sortKey, setSortKey] = useState<string | null>(null);
 
-    const { obtenerMembresiasLocal, obtenerCreditosLocal } = useAuthService();
+    const { obtenerMembresiasLocal, obtenerCreditosLocal, obtenerUsuarioLocal, actualizarBaseDatosLocalMembresia} = useAuthService();
 
     const [listaMembresias, setListaMembresias] = useState<InferSelectModel<typeof schema.membresiasdb>[]>([]);
     const [listaCreditos, setListaCreditos] = useState<InferSelectModel<typeof schema.creditosdb>[]>([]);
@@ -36,21 +36,40 @@ export default function Creditos() {
     };
 
     useFocusEffect(useCallback(() => {
-        let isMounted = true;
-        const cargar = async () => {
-            const resM = await obtenerMembresiasLocal();
-            const resC = await obtenerCreditosLocal();
-            if (isMounted) {  
-                setListaMembresias(resM || []);
-                setListaCreditos(resC || []);
-            }
-        };
-        cargar();
-        return () => { isMounted = false; };
-    }, []));
+    let isMounted = true;
+    
+    const cargar = async () => {
+        // 1. Buscamos el usuario logueado en SQLite
+        const usuarios = await obtenerUsuarioLocal();
+        const usuarioActual = usuarios[0]; // Como usas .limit(1), tomamos el primero
 
+        if (usuarioActual && isMounted) {
+            // 2. Sincronizamos (Trae del API y hace el INSERT en SQLite)
+            await actualizarBaseDatosLocalMembresia(usuarioActual.id); //Pasamos el id a UsuarioId para la Tabla de Membresia
+
+            // 3. Obtenemos de SQLite filtrando por ese ID
+            const resM = await obtenerMembresiasLocal(usuarioActual.id);
+            //const resC = await obtenerCreditosLocal(usuarioActual.id);
+
+            if (isMounted) {
+                setListaMembresias(resM || []);
+                //setListaCreditos(resC || []);
+            }
+        }
+    };
+
+    cargar();
+    return () => { isMounted = false; };
+}, []));
+
+
+    // Define esto fuera de tu componente o antes del useMemo
+    type FilaTabla = typeof listaCreditos[0] | typeof listaMembresias[0];
     const datosFinales = useMemo(() => {
-        let items = index === 0 ? [...listaCreditos] : [...listaMembresias];
+        
+        // Forzamos el tipo aquí para que acepte ambos casos
+        let items: FilaTabla[] = index === 0 ? [...listaCreditos] : [...listaMembresias];
+
         if (searchGlobal) {
             items = items.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(searchGlobal.toLowerCase())));
         }

@@ -1,16 +1,22 @@
 import { router } from "expo-router";
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { UserContext } from "../components/UserContext";
-import { BotonMostrar, Container, FechaRow, FieldGroup, Fields, InputFechaCorta, PickerContainer, StyledPicker, SubmitF, TextInputEntrada, TextoBoton, Title } from "../styles/registerStyles";
+import { BotonMostrar, Container, FechaRow, FieldGroup, Fields, InputFechaCorta, PickerContainer, StyledPicker, SubmitF, TextInputEntrada, TextoBoton, Title, MultiAccount } from "../styles/registerStyles";
 import { useAuthService } from "@/servicesdb/authService";
 import * as Application from 'expo-application';
-import { Alert, Platform, ScrollView, KeyboardAvoidingView, TouchableOpacity, View, Text } from 'react-native';
+import { Alert, Platform, ScrollView, KeyboardAvoidingView, TouchableOpacity, View, Text, Image, Modal,  } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from "@react-native-picker/picker";// Fecha Nacimiento
 import DateTimePicker from '@react-native-community/datetimepicker';//Rueda de fecha de namcimiento
 //Libreriar para el numero de celular - MaskInput y CountryPicker
 import MaskInput from 'react-native-mask-input';
-import CountryPicker, { CountryCode, Country } from 'react-native-country-picker-modal';
+import CountryPicker, { CountryCode, Country, Flag } from 'react-native-country-picker-modal';
 import { validarFolioAPI } from "@/services/api";
+//Registro con Google
+import BtnLoginGoogle from "../components/BtnLoginGoogle";
+import { FontAwesome } from '@expo/vector-icons'; // Asegúrate de tener esta importación
+import { TextInput } from "react-native-paper";
+
 
 export default function Registro() {
 
@@ -26,11 +32,11 @@ export default function Registro() {
 
 //Celular
 const [countryCode, setCountryCode] = useState<CountryCode>('MX');
+const [showCountryPicker, setShowCountryPicker] = useState(false);
 const [callingCode, setCallingCode] = useState('52');
 const [telefonoLimpio, setTelefonoLimpio] = useState(''); // Solo números
 // Formato: (644) 123-4567
 const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
-
 const onSelect = (country: Country) => {
   setCountryCode(country.cca2);
   setCallingCode(country.callingCode[0]);
@@ -44,10 +50,14 @@ const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
 //Folio - superUsuario
 const [folio, setFolio] = useState("");
 const [folioValidado, setFolioValidado] = useState(false);
-const [gymSelected, setGymSelected] = useState(null);
+const [gymSelected, setGymSelected] = useState<number | null>(null);
 const [nombreGimnasio, setNombreGimnasio] = useState("");
+const [modalYaMostrado, setModalYaMostrado] = useState(false);
 // AGREGA ESTA LÍNEA:
 const [cargandoFolio, setCargandoFolio] = useState(false);
+//Modal para confirmar registro mediante Folio
+const [showConfirmModal, setShowConfirmModal] = useState(false);
+// const [gymInfo, setGymInfo] = useState(null);
 
 //Estados de la base de datos SQLlite
 const { registrarUsuarioProceso } = useAuthService();
@@ -124,20 +134,25 @@ const { registrarUsuarioProceso } = useAuthService();
     console.error("Error en el proceso de registro:", error);
     alert("Error en el proceso de registro. Inténtalo de nuevo.");
   }
-
 };
 
+  //Fecha de nacimiento
   const onData = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || date;
-    setShow(false); // Cerramos el picker
-    setDate(currentDate);
+  // En Android, si el usuario cancela, event.type es 'dismissed'
+  if (event.type === 'dismissed') {
+    setShow(false);
+    return;
+  }
 
-    // Formateamos para mostrar al usuario en México (DD/MM/AAAA)
-    let f = currentDate.getDate().toString().padStart(2, '0') + '/' + 
-            (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
-            currentDate.getFullYear();
-    setFechaTexto(f);
-  };
+  const currentDate = selectedDate || date;
+  setShow(false); // Cerramos el picker
+  setDate(currentDate);
+
+  let f = currentDate.getDate().toString().padStart(2, '0') + '/' + 
+          (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
+          currentDate.getFullYear();
+  setFechaTexto(f);
+};
 
   //Logica del folio
   const manejarValidacion = async () => {
@@ -145,7 +160,6 @@ const { registrarUsuarioProceso } = useAuthService();
     alert("Por favor, ingresa el folio.");
     return;
   }
-
   setCargandoFolio(true); // Aquí se activa el "VERIFICANDO..."
   try {
     const res = await validarFolioAPI(folio);
@@ -162,209 +176,354 @@ const { registrarUsuarioProceso } = useAuthService();
   }
 };
 
+//EL USEEFFECT (Va aparte para "vigilar" el éxito de la validación)
+useEffect(() => {
+  // Solo entra si el folio es válido Y el modal no se ha mostrado NUNCA
+  if (folioValidado && nombreGimnasio && !modalYaMostrado) {
+    setFolioValidado(false);    // Detenemos el avance temporalmente
+    setShowConfirmModal(true);  // Abrimos el modal
+    setModalYaMostrado(true);   // Marcamos que ya se mostró
+  }
+}, [folioValidado, nombreGimnasio, modalYaMostrado]);
+
  //Funcion para validar correo correctamente
  const validarEmail = (email: string) => 
     { const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; //@antes, @despues, punto(.) despues(.mx ejemplo)
     return regex.test(email); };
 
+  //JSX
   return (
-
-     <KeyboardAvoidingView 
-  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-  style={{ flex: 1 }}
->
-  <ScrollView 
-    keyboardShouldPersistTaps="handled"
-    contentContainerStyle={{ flexGrow: 1, paddingBottom: 30 }}
-    showsVerticalScrollIndicator={false}
+  <KeyboardAvoidingView 
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    style={{ flex: 1, backgroundColor: '#fff' }}
   >
-    <Container> 
+    <ScrollView 
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ flexGrow: 1, paddingBottom: 50 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Container> 
 
-      {/* --- LÓGICA CONDICIONAL: ¿FOLIO VALIDADO? --- */}
-      {!folioValidado ? (
-        
-        /* --- VISTA A: SOLO SE MUESTRA EL FOLIO AL PRINCIPIO --- */
-        <React.Fragment>
-          <Title> Bienvenido </Title>
-          <View style={{ marginTop: 20, width: '100%', alignItems: 'center' }}>
-            <FieldGroup>
-              <Fields> Folio de Acceso </Fields>
-              <TextInputEntrada
-                placeholder="Ingresa el folio de tu gimnasio"
-                value={folio}
-                onChangeText={setFolio}
-                autoCapitalize="characters"
-              />
-            </FieldGroup>
+        {!folioValidado ? (
+          /* --- VISTA A: VALIDACIÓN DE FOLIO --- */
+          <FieldGroup>
+            <Title>Bienvenido</Title>
+            <Fields>Folio de Acceso</Fields>
+            <TextInputEntrada
+              placeholder="Ingresa el folio de tu gimnasio"
+              value={folio}
+              onChangeText={setFolio}
+              autoCapitalize="characters"
+              underlineColorAndroid="transparent"
+            />
+            <SubmitF onPress={manejarValidacion} disabled={cargandoFolio} style={{ marginTop: 20 }}>
+              <TextoBoton>{cargandoFolio ? "VERIFICANDO..." : "CONTINUAR"}</TextoBoton>
+            </SubmitF>
+          </FieldGroup>
 
-            <FieldGroup>
-              <SubmitF onPress={manejarValidacion} disabled={cargandoFolio}>
-                <TextoBoton>{cargandoFolio ? "VERIFICANDO..." : "CONTINUAR"}</TextoBoton>
-              </SubmitF>
-            </FieldGroup>
-          </View>
-        </React.Fragment>
-
-      ) : (
-        
-        /* --- VISTA B: TODO TU FORMULARIO ORIGINAL --- */
-        <React.Fragment>
-          <Title> Registrarse </Title>
           
-          {/* Subtítulo informativo opcional */}
-          <Text style={{ textAlign: 'center', color: '#7da854', marginBottom: 10, fontWeight: 'bold' }}>
-            Gimnasio: {nombreGimnasio}
-          </Text>
 
-          <FieldGroup /*Contenedor para llenar Nombre*/>
-            <Fields> Nombre </Fields>
-            <TextInputEntrada onChangeText={setUser} />
-          </FieldGroup>
+        ) : (
+          /* --- VISTA B: FORMULARIO COMPLETO --- */
+          <>
+            <Title>Registrarse</Title>
+            
+            <FieldGroup>
+              <MultiAccount>También Puede Registrarse Con:</MultiAccount>
+              <BtnLoginGoogle folioExterno={gymSelected} />
+              <Text style={{ color: '#7da854', fontWeight: 'bold', marginTop: 10 }}>
+                Gimnasio: {nombreGimnasio}
+              </Text>
+            </FieldGroup>
 
-          <FieldGroup /*Contenedor para llenar Apellidos*/>
-            <Fields> Apellido Paterno </Fields>
-            <TextInputEntrada onChangeText={setLastNameP} />
-          </FieldGroup>
+            <FieldGroup>
+              <Fields>Nombre</Fields>
+              <TextInputEntrada onChangeText={setUser} placeholder="Tu nombre" />
+            </FieldGroup>
 
-          <FieldGroup>
-            <Fields> Apellido Materno </Fields>
-            <TextInputEntrada onChangeText={setLastNameM} />
-          </FieldGroup>
+            <FieldGroup>
+              <Fields>Apellido Paterno</Fields>
+              <TextInputEntrada onChangeText={setLastNameP} placeholder="Apellido Paterno" />
+            </FieldGroup>
 
-          <FieldGroup>
-            <React.Fragment>
-              <Fields> Constraseña </Fields>
+            <FieldGroup>
+              <Fields>Apellido Materno</Fields>
+              <TextInputEntrada onChangeText={setLastNameM} placeholder="Apellido Materno" />
+            </FieldGroup>
+
+            <FieldGroup>
+              <Fields>Contraseña</Fields>
               <TextInputEntrada 
                 secureTextEntry={secure}
                 autoCapitalize="none"
-                autoCorrect={false}
                 onChangeText={setPassword}
+                placeholder="********"
+                underlineColorAndroid="transparent"
               />
+              
+              {/* El botón ahora es pequeño y se alinea a la derecha automáticamente */}
               <BotonMostrar onPress={() => setSecure(!secure)}>
                 <TextoBoton>{secure ? "MOSTRAR" : "OCULTAR"}</TextoBoton> 
               </BotonMostrar>
-            </React.Fragment>
-          </FieldGroup>
+            </FieldGroup>
 
-          <FieldGroup>
-            <Fields> Email </Fields>
-            <TextInputEntrada 
-              keyboardType="email-address"
-              onChangeText={setEmail}
-            />
-          </FieldGroup>
+            <FieldGroup>
+              <Fields>Email</Fields>
+              <TextInputEntrada 
+                keyboardType="email-address"
+                onChangeText={setEmail}
+                placeholder="ejemplo@correo.com"
+              />
+            </FieldGroup>
 
-          <FieldGroup style={{ alignItems: 'center', width: '100%' }}>
-            <Fields style={{ alignSelf: 'flex-start', marginLeft: '12.8%' }}>Número de Teléfono</Fields>
-            <View style={{ 
-              flexDirection: 'row', 
-              width: '82%', 
-              backgroundColor: '#f2f2f2', 
-              borderRadius: 8, 
-              borderWidth: 1, 
-              borderColor: '#bbb7b7',
-              height: 60,
-              alignItems: 'center',
-              marginTop: 10
-            }}>
-              <TouchableOpacity style={{ 
-                backgroundColor: '#7da854', 
-                height: '100%', 
-                paddingHorizontal: 10,
-                flexDirection: 'row',
-                justifyContent: 'center', 
-                alignItems: 'center',
-                borderTopLeftRadius: 7,
-                borderBottomLeftRadius: 7
-              }}>
-                <CountryPicker
-                  countryCode={countryCode}
-                  withFilter withFlag withCallingCode withAlphaFilter
-                  onSelect={onSelect}
-                  visible={false}
+            <FieldGroup>
+              <Fields>Número de Teléfono</Fields>
+              <View style={{ flexDirection: 'row', width: '100%', backgroundColor: '#f2f2f2', borderRadius: 8, height: 55, alignItems: 'center', overflow: 'hidden' }}>
+                
+                {/* BOTÓN DISPARADOR (Mantenemos tu diseño verde) */}
+                <TouchableOpacity 
+                  onPress={() => setShowCountryPicker(true)} 
+                  style={{ 
+                    backgroundColor: '#7da854', 
+                    paddingHorizontal: 12, 
+                    height: '100%', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    flexDirection: 'row', 
+                    borderTopLeftRadius: 8,
+                    borderBottomLeftRadius: 8
+                  }}
+                >
+                  <View style={{ marginRight: 8 }}>
+                    <Image
+                      source={{ uri: `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png` }}
+                      style={{ width: 25, height: 18, borderRadius: 2 }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+                    +{callingCode}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Input para el resto del teléfono (TU MASKINPUT ACTUAL) */}
+                <MaskInput
+                  value={telefono}
+                  onChangeText={(masked, unmasked) => {
+                    setNumberPhone(masked);
+                    setTelefonoLimpio(unmasked);
+                  }}
+                  mask={phoneMask}
+                  keyboardType="numeric"
+                  style={{ flex: 1, paddingHorizontal: 15, fontSize: 16, color: '#333' }}
+                  placeholderTextColor="#999"
+                  placeholder="(555) 555-5555"
                 />
-                <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: 5 }}>
-                  +{callingCode}
-                </Text>
+              </View>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Fields>¿Eres estudiante?</Fields>
+              <View style={{ width: '100%', borderBottomWidth: 1, borderBottomColor: '#ccc' }}>
+                <Picker
+                  selectedValue={esEstudiante}
+                  onValueChange={(itemValue) => setEsEstudiante(itemValue)}
+                  style={{ height: 50, width: '100%' }}
+                >
+                  <Picker.Item label="Selecciona una opción..." value={0} color="#999" />
+                  <Picker.Item label="Sí, soy estudiante" value={1} />
+                  <Picker.Item label="No, no soy estudiante" value={2} />
+                </Picker>
+              </View>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Fields>Fecha de Nacimiento</Fields>
+              {/* Agregamos una View para contener el área de clic */}
+              <View style={{ width: '100%', height: 60, marginBottom: 10 }}> 
+                <TouchableOpacity 
+                  onPress={() => setShow(true)}
+                  style={{ flex: 1 }} // El toque solo vivirá dentro de estos 60px de alto
+                >
+                  <View pointerEvents="none">
+                    <TextInput
+                      placeholder="Selecciona tu fecha"
+                      value={fechaTexto}
+                      editable={false}
+                      style={{
+                        backgroundColor: '#F0F2F5',
+                        height: 55,
+                        borderRadius: 10,
+                        paddingHorizontal: 15,
+                        fontSize: 16,
+                        color: fechaTexto === "Selecciona tu fecha" ? '#999' : '#000',
+                        borderWidth: 1,
+                        borderColor: '#E1E4E8',
+                      }}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </FieldGroup>
+
+            <FieldGroup>
+              <SubmitF onPress={handlRegister} style={{ marginTop: 10 }}>
+                <TextoBoton>REGISTRAR</TextoBoton> 
+              </SubmitF>
+            </FieldGroup>
+          </>
+        )}
+      </Container>  
+    </ScrollView>
+
+    {/* --- MODAL PARA SELECCIONAR PAÍS --- */}
+  <Modal
+    visible={showCountryPicker}
+    animationType="slide"
+    transparent={false}
+    onRequestClose={() => setShowCountryPicker(false)}
+  >
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      
+      {/* 1. TU ENCABEZADO CON DISEÑO (Ahora dentro del Modal) */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'android' ? 20 : 0, 
+        backgroundColor: '#fff',
+        paddingBottom: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+        elevation: 2
+      }}>
+        <TouchableOpacity 
+          onPress={() => setShowCountryPicker(false)}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: '#F0F2F5',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#333' }}>✕</Text>
+        </TouchableOpacity>
+        <Text style={{ marginLeft: 15, fontSize: 18, fontWeight: 'bold', color: '#000' }}>
+          Selecciona tu país
+        </Text>
+      </View>
+
+      {/* 2. EL PICKER (Sin su propia X, usando la nuestra) */}
+      <CountryPicker
+        countryCode={countryCode}
+        visible={showCountryPicker}
+        onSelect={(country) => {
+          onSelect(country);
+          setShowCountryPicker(false);
+        }}
+        onClose={() => setShowCountryPicker(false)}
+        withFilter
+        withModal={false}
+        withAlphaFilter={false}
+        renderFlagButton={() => null}
+        
+        // ESTO QUITA LA "X" VISUALMENTE SIN DAR ERRORES
+        theme={{
+          onBackgroundTextColor: 'transparent', // Hace que el icono X sea invisible
+          backgroundColor: '#ffffff',
+        }}
+
+        filterProps={{
+        autoFocus: true,
+        placeholder: 'Busca tu país...',
+        style: {
+          height: 48,
+          backgroundColor: '#F0F2F5',
+          borderRadius: 12,
+          color: '#000',
+          marginTop: 10,
+          width: '100%',           // Aumentamos el ancho para que al moverlo no se acorte
+          
+          // ESTO MUEVE EL TEXTO AL LUGAR DE LA X OCULTA
+          marginLeft: -65,         // Empuja el bloque a la izquierda sobre la X
+          paddingLeft: 50,         // Ajusta este número para centrar el texto en el cuadro
+        }
+      }}
+      />
+    </SafeAreaView>
+  </Modal>
+
+  {/* --- EL MODAL DE FOLIO (Fuera del ScrollView) --- */}
+      <Modal
+        visible={showConfirmModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={{ 
+          flex: 1, 
+          backgroundColor: 'rgba(0,0,0,0.5)', 
+          justifyContent: 'center', 
+          alignItems: 'center' 
+        }}>
+          <View style={{ 
+            backgroundColor: '#fff', 
+            padding: 25, 
+            borderRadius: 20, 
+            width: '85%', 
+            alignItems: 'center' 
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
+              ¿Confirmar registro?
+            </Text>
+            
+            <Text style={{ textAlign: 'center', marginBottom: 20 }}>
+              Estás por registrarte en:{"\n"}
+              <Text style={{ fontWeight: 'bold', color: '#82B451' }}>
+                {nombreGimnasio || 'Cargando...'} 
+              </Text>
+            </Text>
+
+            <View style={{ flexDirection: 'row', width: '100%' }}>
+              <TouchableOpacity 
+                onPress={() => setShowConfirmModal(false)}
+                style={{ flex: 1, padding: 12, marginRight: 5, borderRadius: 10, borderWidth: 1, borderColor: '#ccc' }}
+              >
+                <Text style={{ textAlign: 'center' }}>Cancelar</Text>
               </TouchableOpacity>
 
-              <MaskInput
-                value={telefono}
-                onChangeText={(masked, unmasked) => {
-                  setNumberPhone(masked);
-                  setTelefonoLimpio(unmasked);
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowConfirmModal(false);
+                  // Ahora esto sí funcionará y te mandará a la Vista B
+                  setFolioValidado(true); 
                 }}
-                mask={phoneMask}
-                keyboardType="numeric"
-                placeholder="(000) 000-0000"
-                style={{
-                  flex: 1,
-                  paddingHorizontal: 15,
-                  fontSize: 16,
-                  color: '#000'
-                }}
-              />
-            </View>
-          </FieldGroup>
-
-          <FieldGroup>
-            <Fields>¿Eres estudiante?</Fields>
-            <PickerContainer style={{ 
-              backgroundColor: '#f2f2f2', 
-              borderRadius: 8, 
-              borderWidth: 1, 
-              borderColor: '#bbb7b7',
-              marginTop: 10,
-              width: '82%',
-              alignSelf: 'center',
-              overflow: 'hidden'
-            }}>
-              <Picker
-                selectedValue={esEstudiante}
-                onValueChange={(itemValue) => setEsEstudiante(itemValue)}
-                style={{ height: 60, width: '100%' }}
+                style={{ flex: 1, padding: 12, backgroundColor: '#82B451', borderRadius: 10 }}
               >
-                <Picker.Item label="Selecciona una opción..." value={0} color="#999" />
-                <Picker.Item label="Sí, soy estudiante" value={1} />
-                <Picker.Item label="No, no soy estudiante" value={2} />
-              </Picker>
-            </PickerContainer>
-          </FieldGroup>
+                <Text style={{ textAlign: 'center', color: '#fff', fontWeight: 'bold' }}>Sí, seguro</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
-          <FieldGroup>
-            <Fields>Fecha de Nacimiento</Fields>
-            <TouchableOpacity onPress={() => setShow(true)}>
-              <TextInputEntrada
-                editable={false}
-                value={fechaTexto}
-                placeholder="Selecciona tu fecha"
-              />
-            </TouchableOpacity>
-
-            {show && (
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'spinner'} 
-                onChange={onData}
-                maximumDate={new Date()}
-                textColor="black" 
-              />
-            )}
-          </FieldGroup>
-
-          <FieldGroup /*Boton para enviar formulario*/>
-            <SubmitF onPress={handlRegister}>
-              <TextoBoton> Registrar </TextoBoton> 
-            </SubmitF>
-          </FieldGroup>
-        </React.Fragment>
+      {/* AQUÍ VA EL PICKER */}
+      {show && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          // 'spinner' es mucho más compacto y no rompe el diseño de tu app
+          display="spinner" 
+          maximumDate={new Date()}
+          onChange={onData}
+          // Opcional: Esto ayuda a que en algunos Android se vea mejor el fondo
+          themeVariant="light" 
+        />
       )}
-
-    </Container>  
-  </ScrollView>
-</KeyboardAvoidingView> 
-  );
+ 
+  </KeyboardAvoidingView> 
+);
 }
 
 

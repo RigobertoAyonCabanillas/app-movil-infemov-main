@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil } from '@/services/api'; 
+import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -58,10 +58,10 @@ const loginUsuarioProceso = async (email: string, password: string) => {
       // 2. Limpiar sesión anterior
       await drizzleDb.delete(schema.usersdb);
 
-      // 3. INSERTAR solo ID y TOKEN (como pediste)
+      // 3. INSERTAR solo ID y TOKEN (como pediste) Lo espacios en blanco se llenan en el endpoint de perfil
       await drizzleDb.insert(schema.usersdb).values({
         id: respuestaApi.Id, // ID 
-        token: respuestaApi.Token,    // Token de sesión
+        token: respuestaApi.Token,// Token de sesión
         correo: email,
         contrasena: password,
         nombres: "",
@@ -70,7 +70,8 @@ const loginUsuarioProceso = async (email: string, password: string) => {
         estudiante: "",
         fechaNacimiento: "",
         telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
-        deviceId: ""
+        deviceId: "",
+        gymId: respuestaApi.SuperUsuarioID 
       });
 
       console.log("✅ ID y Token guardados en SQLite");
@@ -85,7 +86,7 @@ const loginUsuarioProceso = async (email: string, password: string) => {
 
   // --- 3. PROCESO PARA GOOGLE (UPSERT) ---
   //Aqui el code es de forma nativa por incompativilidades en el desarrollo
- const guardarUsuarioEnSQLite = async (datos: { nombres: string, apellidos: string, correo: string, token: string }) => {
+ const guardarUsuarioEnSQLite = async (datos: { nombres: string, apellidoPaterno: string, apellidoMaterno: string, correo: string, token: string, superUsuario: number }) => {
   try {
     // 1. Verificación Crítica
     if (!db) {
@@ -98,15 +99,17 @@ const loginUsuarioProceso = async (email: string, password: string) => {
     // 2. Usar parámetros (?) en lugar de template strings para evitar errores de sintaxis
     // runAsync es más estable para INSERT que execAsync
     await db.runAsync(
-      `INSERT INTO usersdb (nombres, apellidos, correo, telefono, contrasena, token) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO usersdb (nombres, apellidoPaterno, apellidoMaterno, correo, telefono, contrasena, token, gymId) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datos.nombres || 'Google User',
-        datos.apellidos || '',
+        datos.apellidoPaterno || '',
+        datos.apellidoMaterno || '',
         datos.correo || '',
         'S/N',
         'GOOGLE_LOGIN',
-        datos.token
+        datos.token,
+        datos.superUsuario,
       ]
     );
 
@@ -151,7 +154,7 @@ const sincronizarPerfil = async (userId: number, correo: string, token: string) 
         apellidoPaterno: datosApi.ApellidoPaterno || "", 
         apellidoMaterno: datosApi.ApellidoMaterno || "", 
         telefono: datosApi.Telefono || "",
-        correo: datosApi.Email || correo,
+        correo: datosApi.Correo || correo,
         // Mantener el token actual si el API no manda uno nuevo
         token: token 
       })
@@ -166,7 +169,7 @@ const sincronizarPerfil = async (userId: number, correo: string, token: string) 
       // Si por alguna razón no estaba el registro (pasa poco), lo creamos
       const nuevoRegistro = await drizzleDb.insert(schema.usersdb).values({
         id: userId,
-        correo: datosApi.Email || correo,
+        correo: datosApi.Correo || correo,
         nombres: datosApi.Nombre || "",
         apellidoPaterno: datosApi.Apellido || "",
         apellidoMaterno: datosApi.Apellido || "",
@@ -199,37 +202,50 @@ const sincronizarPerfil = async (userId: number, correo: string, token: string) 
 };
 
 // Nueva función para obtener el usuario local sin errores de scope
+//Uso en las Tablas MMEBRESIA Y CREDITOS
   const obtenerUsuarioLocal = async () => {
     return await drizzleDb.select().from(schema.usersdb).limit(1);
 };
 
-// --- 5. OBTENER MEMBRESÍAS DEL MÓVIL ROOT ---
-const obtenerMembresiasLocal = async () => {
-  try {
-    // Usamos drizzleDb que ya definiste arriba con el schema
-    const resultado = await drizzleDb.select().from(schema.membresiasdb);
-    console.log("✅ Membresías recuperadas de SQLite:", resultado.length);
-    return resultado;
-  } catch (error) {
-    console.error("❌ Error al obtener membresías locales:", error);
-    return [];
-  }
+// --- 5. OBTENER MEMBRESÍAS (SOLO SQLITE) ---
+const obtenerMembresiasLocal = async (usuarioId: number) => {
+    try {
+        return await drizzleDb
+            .select()
+            .from(schema.membresiasdb)
+            .where(eq(schema.membresiasdb.userId, usuarioId));
+    } catch (error) {
+        console.error("❌ Error al leer de SQLite:", error);
+        return [];
+    }
 };
 
-// --- INSERTAR DATO DE PRUEBA --- //Momentaneo
-const insertarMembresiaTest = async () => {
-  try {
-    await drizzleDb.insert(schema.membresiasdb).values({
-      folio: "#TEST-001",
-      tipo: "Mensual Premium",
-      fechaInicio: "01/03/2026",
-      fechaFin: "30/03/2026",
-      status: 1 // 1 para Activo
-    });
-    console.log("✅ Registro de prueba insertado en SQLite");
-  } catch (error) {
-    console.error("❌ Error al insertar test:", error);
-  }
+// --- 6. PROCESAR Y GUARDAR (LLAMA AL API Y GUARDA EN SQLITE) ---
+const actualizarBaseDatosLocalMembresia = async (usuarioId: number) => {
+    try {
+        // Usamos la función que ya tiene el nombre en api.js
+        const membresiasApi = await sincronizarMembresiasDesdeApi(usuarioId);
+
+        if (membresiasApi && membresiasApi.length > 0) {
+            // Limpiamos lo viejo
+            await drizzleDb.delete(schema.membresiasdb).where(eq(schema.membresiasdb.userId, usuarioId));
+
+            // Insertamos lo nuevo
+            for (const m of membresiasApi) {
+                await drizzleDb.insert(schema.membresiasdb).values({
+                    folio: m.FolioMembresia.toString(),
+                    tipo: m.TipoMembresia,
+                    fechaInicio: m.FechaInicio,
+                    fechaFin: m.FechaVencimiento,
+                    status: m.Estatus === "Activa" ? 1 : 0,
+                    userId: usuarioId,
+                });
+            }
+            console.log("✅ SQLite actualizado con datos de la API");
+        }
+    } catch (error) {
+        console.error("❌ Error al actualizar SQLite:", error);
+    }
 };
 
 // --- 5. OBTENER CREDITOS DEL MÓVIL ROOT ---
@@ -242,21 +258,6 @@ const obtenerCreditosLocal = async () => {
   }
 };
 
-// --- INSERTAR DATO DE PRUEBA --- //Momentaneo
-const insertarCreditoTest = async () => {
-  try {
-    await drizzleDb.insert(schema.creditosdb).values({
-      folioCredito: "CR-9921",
-      paquete: "Paquete 50 SMT",
-      tipo: "Recarga Directa",
-      fechaPago: "03/03/2026",
-      fechaExpiracion: "03/04/2026",
-      estatus: 1
-    });
-  } catch (error) {
-    console.error("❌ Error en insert de test:", error);
-  }
-};
 
 // --- ACTUALIZAR CONTRASEÑA --- //
 const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => {
@@ -275,7 +276,7 @@ const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => 
   }
 };
 
-  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal,
-  insertarMembresiaTest, obtenerCreditosLocal, insertarCreditoTest, actualizarPassword };
+  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
+    actualizarBaseDatosLocalMembresia, actualizarPassword };
 }
 

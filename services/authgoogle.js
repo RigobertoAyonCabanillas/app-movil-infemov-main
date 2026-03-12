@@ -7,7 +7,17 @@ import { desencriptarDatos } from './api';
 const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth'; 
 
 // --- FUNCIÓN DE ENTRADA (Login) ---
-export const enviarLoginGoogle = async (accessToken, idToken) => {
+export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
+
+  const body = {
+    accessToken: accessToken,
+    idToken: idToken,
+    // CRUCIAL: El nombre debe ser SuperUsuarioId para que C# lo asocie
+    SuperUsuarioId: folioExterno, 
+  };
+
+  console.log("Datos pal loginGG", body);
+
   try {
     const response = await fetch(`${BASE_AUTH_URL}/google-auth`, {
       method: 'POST',
@@ -15,10 +25,9 @@ export const enviarLoginGoogle = async (accessToken, idToken) => {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        accessToken: accessToken, // Obligatorio para C#
-        IdToken: idToken          // Opcional/Adicional para C#
-      }),
+      body: JSON.stringify(
+        body
+      ),
     });
 
     if (!response.ok) {
@@ -40,17 +49,31 @@ export const enviarLoginGoogle = async (accessToken, idToken) => {
       const datosDescifrados = desencriptarDatos(base64Cifrado);
       console.log("Datos ya descifrados:", datosDescifrados);
 
-      // 3. Ahora sí, accedemos al Token (C# lo envía con 'T' mayúscula según tu objeto)
-      const jwtToken = datosDescifrados?.Token || datosDescifrados?.token;
+      const token = datosDescifrados?.Token || datosDescifrados?.token;
+      const superUsuario = datosDescifrados?.SuperUsuario;
 
-      if (jwtToken) {
-          await AsyncStorage.setItem('userToken', jwtToken);
-          console.log("✅ Login exitoso y token guardado");
-          return { token: jwtToken }; // Retornamos el objeto con el id y token como quieres
+      // 4. Validamos que al menos el token exista para proceder
+      if (token) {
+          // Guardamos el token en AsyncStorage (como ya lo haces)
+          await AsyncStorage.setItem('userToken', token);
+          
+          // Opcional: Si necesitas el SuperUsuario en futuras sesiones, guárdalo también
+          if (superUsuario !== undefined) {
+              await AsyncStorage.setItem('superUsuario', superUsuario.toString());
+          }
+
+          console.log("✅ Login exitoso, Token y SuperUsuario capturados");
+          console.log("Token:", token);
+          console.log("SuperUsuario:", superUsuario);
+
+          // IMPORTANTE: Retornamos ambos en el objeto
+          return { 
+              token: token, 
+              superUsuario: superUsuario 
+          }; 
       }
-  }
+    }
 
-    console.log("Token del backend (token):", jwtToken);
     console.log("Login exitoso en API");
     return data;
   } catch (error) {
