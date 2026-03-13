@@ -24,7 +24,7 @@ export default function Creditos() {
     const [sortAsc, setSortAsc] = useState(true);
     const [sortKey, setSortKey] = useState<string | null>(null);
 
-    const { obtenerMembresiasLocal, obtenerCreditosLocal, obtenerUsuarioLocal, actualizarBaseDatosLocalMembresia} = useAuthService();
+    const { obtenerMembresiasLocal, obtenerCreditosLocal, obtenerUsuarioLocal, actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos} = useAuthService();
 
     const [listaMembresias, setListaMembresias] = useState<InferSelectModel<typeof schema.membresiasdb>[]>([]);
     const [listaCreditos, setListaCreditos] = useState<InferSelectModel<typeof schema.creditosdb>[]>([]);
@@ -41,26 +41,33 @@ export default function Creditos() {
     const cargar = async () => {
         // 1. Buscamos el usuario logueado en SQLite
         const usuarios = await obtenerUsuarioLocal();
-        const usuarioActual = usuarios[0]; // Como usas .limit(1), tomamos el primero
+        const usuarioActual = usuarios[0]; 
 
         if (usuarioActual && isMounted) {
-            // 2. Sincronizamos (Trae del API y hace el INSERT en SQLite)
-            await actualizarBaseDatosLocalMembresia(usuarioActual.id); //Pasamos el id a UsuarioId para la Tabla de Membresia
+            // Suponiendo que el gymId lo tienes guardado en el usuario
+            // O si lo tienes en una variable de estado tras el login
+            const gymId = usuarioActual.superUsuarioId; 
 
-            // 3. Obtenemos de SQLite filtrando por ese ID
+        // 2. Ahora pasamos AMBOS argumentos
+        await actualizarBaseDatosLocalMembresia(usuarioActual.id, gymId);
+
+            // 3. Sincronizamos Créditos (API -> SQLite) <--- ESTA ES LA QUE FALTABA
+            await actualizarBaseDatosLocalCreditos(usuarioActual.id);
+
+            // 4. Obtenemos de SQLite filtrando por ese ID para la UI
             const resM = await obtenerMembresiasLocal(usuarioActual.id);
-            //const resC = await obtenerCreditosLocal(usuarioActual.id);
+            const resC = await obtenerCreditosLocal(usuarioActual.id);
 
             if (isMounted) {
                 setListaMembresias(resM || []);
-                //setListaCreditos(resC || []);
+                setListaCreditos(resC || []);
             }
         }
     };
 
-    cargar();
-    return () => { isMounted = false; };
-}, []));
+            cargar();
+            return () => { isMounted = false; };
+        }, []));
 
 
     // Define esto fuera de tu componente o antes del useMemo
@@ -189,41 +196,47 @@ const HeaderFiltro = ({ title, id }: { title: string, id: string }) => (
                     </DataTable.Header>
 
                     {itemsPaginados.map((item: any) => (
-                    <DataTable.Row key={item.id} style={styles.row}>
+                    <DataTable.Row key={item.id || item.FolioMembresia} style={styles.row}>
+                        {/* Folio: Usa FolioMembresia del C# */}
                         <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>{index === 0 ? item.folioCredito : item.folio}</Text>
+                            <Text style={styles.cellText}>
+                                {index === 0 ? item.folioCredito : item.FolioMembresia}
+                            </Text>
                         </DataTable.Cell>
                         
+                        {/* Tipo: Muestra "Mensual", "Semanal", etc. */}
                         <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>{index === 0 ? item.paquete : item.tipo}</Text>
+                            <Text style={styles.cellText}>
+                                {index === 0 ? item.paquete : item.TipoMembresia}
+                            </Text>
                         </DataTable.Cell>
 
+                        {/* Fecha Inicio */}
                         <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>{index === 0 ? item.tipo : item.fechaInicio}</Text>
+                            <Text style={styles.cellText}>
+                                {index === 0 ? item.tipo : item.FechaInicio}
+                            </Text>
                         </DataTable.Cell>
 
+                        {/* Fecha Vencimiento: Ya viene formateada "dd de MMMM..." */}
                         <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>{index === 0 ? item.fechaPago : item.fechaFin}</Text>
+                            <Text style={styles.cellText}>
+                                {index === 0 ? item.fechaPago : item.FechaVencimiento}
+                            </Text>
                         </DataTable.Cell>
 
-                        {/* Fila Adaptable: Si agregas columna arriba, agrégala aquí también */}
-                        {index === 0 && (
-                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                                <Text style={styles.cellText}>{item.fechaExpiracion}</Text>
-                            </DataTable.Cell>
-                        )}
-
+                        {/* Estatus: Compara el string directo "Activa" */}
                         <DataTable.Cell numeric style={styles.statusCell}>
                             <Text style={{ 
-                                color: (index === 0 ? item.estatus : item.status) === 1 ? '#2ecc71' : '#e74c3c', 
+                                color: item.Estatus === "Activa" ? '#2ecc71' : '#e74c3c', 
                                 fontWeight: 'bold', 
                                 fontSize: 12 
                             }}>
-                                {(index === 0 ? item.estatus : item.status) === 1 ? 'Activo' : 'Vencido'}
+                                {item.Estatus}
                             </Text>
                         </DataTable.Cell>
                     </DataTable.Row>
-                    ))}
+                ))}
                 </DataTable>
             </ScrollView>
 

@@ -16,6 +16,7 @@ import { validarFolioAPI } from "@/services/api";
 import BtnLoginGoogle from "../components/BtnLoginGoogle";
 import { FontAwesome } from '@expo/vector-icons'; // Asegúrate de tener esta importación
 import { TextInput } from "react-native-paper";
+import { useLocalSearchParams } from 'expo-router'; // Asegúrate de importar esto
 
 
 export default function Registro() {
@@ -48,21 +49,15 @@ const [show, setShow] = useState(false);
 const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
 
 //Folio - superUsuario
-const [folio, setFolio] = useState("");
-const [folioValidado, setFolioValidado] = useState(false);
-const [gymSelected, setGymSelected] = useState<number | null>(null);
-const [nombreGimnasio, setNombreGimnasio] = useState("");
-const [modalYaMostrado, setModalYaMostrado] = useState(false);
-// AGREGA ESTA LÍNEA:
-const [cargandoFolio, setCargandoFolio] = useState(false);
-//Modal para confirmar registro mediante Folio
-const [showConfirmModal, setShowConfirmModal] = useState(false);
-// const [gymInfo, setGymInfo] = useState(null);
+const params = useLocalSearchParams(); // Recibimos lo que mande el Login
+// Ahora el gymSelected y nombreGimnasio vienen de los parámetros
+const [gymSelected, setGymSelected] = useState<number | null>(Number(params.gymId) || null);
+const [nombreGimnasio, setNombreGimnasio] = useState(params.gymNombre || "");
+
 
 //Estados de la base de datos SQLlite
 const { registrarUsuarioProceso } = useAuthService();
     
-
  //Funcion principal del formulario
  const handlRegister = async () => {
   //  Validación de campos existentes
@@ -154,38 +149,6 @@ const { registrarUsuarioProceso } = useAuthService();
   setFechaTexto(f);
 };
 
-  //Logica del folio
-  const manejarValidacion = async () => {
-  if (!folio.trim()) {
-    alert("Por favor, ingresa el folio.");
-    return;
-  }
-  setCargandoFolio(true); // Aquí se activa el "VERIFICANDO..."
-  try {
-    const res = await validarFolioAPI(folio);
-    console.log("Folio del back", res)
-    if (res && res.id) {
-      setGymSelected(res.id); 
-      setNombreGimnasio(res.nombre);
-      setFolioValidado(true); 
-    }
-  } catch (error) {
-    alert("Folio inválido.");
-  } finally {
-    setCargandoFolio(false); // Aquí vuelve a "CONTINUAR"
-  }
-};
-
-//EL USEEFFECT (Va aparte para "vigilar" el éxito de la validación)
-useEffect(() => {
-  // Solo entra si el folio es válido Y el modal no se ha mostrado NUNCA
-  if (folioValidado && nombreGimnasio && !modalYaMostrado) {
-    setFolioValidado(false);    // Detenemos el avance temporalmente
-    setShowConfirmModal(true);  // Abrimos el modal
-    setModalYaMostrado(true);   // Marcamos que ya se mostró
-  }
-}, [folioValidado, nombreGimnasio, modalYaMostrado]);
-
  //Funcion para validar correo correctamente
  const validarEmail = (email: string) => 
     { const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; //@antes, @despues, punto(.) despues(.mx ejemplo)
@@ -204,26 +167,6 @@ useEffect(() => {
     >
       <Container> 
 
-        {!folioValidado ? (
-          /* --- VISTA A: VALIDACIÓN DE FOLIO --- */
-          <FieldGroup>
-            <Title>Bienvenido</Title>
-            <Fields>Folio de Acceso</Fields>
-            <TextInputEntrada
-              placeholder="Ingresa el folio de tu gimnasio"
-              value={folio}
-              onChangeText={setFolio}
-              autoCapitalize="characters"
-              underlineColorAndroid="transparent"
-            />
-            <SubmitF onPress={manejarValidacion} disabled={cargandoFolio} style={{ marginTop: 20 }}>
-              <TextoBoton>{cargandoFolio ? "VERIFICANDO..." : "CONTINUAR"}</TextoBoton>
-            </SubmitF>
-          </FieldGroup>
-
-          
-
-        ) : (
           /* --- VISTA B: FORMULARIO COMPLETO --- */
           <>
             <Title>Registrarse</Title>
@@ -372,7 +315,7 @@ useEffect(() => {
               </SubmitF>
             </FieldGroup>
           </>
-        )}
+        
       </Container>  
     </ScrollView>
 
@@ -454,59 +397,6 @@ useEffect(() => {
       />
     </SafeAreaView>
   </Modal>
-
-  {/* --- EL MODAL DE FOLIO (Fuera del ScrollView) --- */}
-      <Modal
-        visible={showConfirmModal}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={{ 
-          flex: 1, 
-          backgroundColor: 'rgba(0,0,0,0.5)', 
-          justifyContent: 'center', 
-          alignItems: 'center' 
-        }}>
-          <View style={{ 
-            backgroundColor: '#fff', 
-            padding: 25, 
-            borderRadius: 20, 
-            width: '85%', 
-            alignItems: 'center' 
-          }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>
-              ¿Confirmar registro?
-            </Text>
-            
-            <Text style={{ textAlign: 'center', marginBottom: 20 }}>
-              Estás por registrarte en:{"\n"}
-              <Text style={{ fontWeight: 'bold', color: '#82B451' }}>
-                {nombreGimnasio || 'Cargando...'} 
-              </Text>
-            </Text>
-
-            <View style={{ flexDirection: 'row', width: '100%' }}>
-              <TouchableOpacity 
-                onPress={() => setShowConfirmModal(false)}
-                style={{ flex: 1, padding: 12, marginRight: 5, borderRadius: 10, borderWidth: 1, borderColor: '#ccc' }}
-              >
-                <Text style={{ textAlign: 'center' }}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowConfirmModal(false);
-                  // Ahora esto sí funcionará y te mandará a la Vista B
-                  setFolioValidado(true); 
-                }}
-                style={{ flex: 1, padding: 12, backgroundColor: '#82B451', borderRadius: 10 }}
-              >
-                <Text style={{ textAlign: 'center', color: '#fff', fontWeight: 'bold' }}>Sí, seguro</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* AQUÍ VA EL PICKER */}
       {show && (

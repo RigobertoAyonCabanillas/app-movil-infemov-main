@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarMembresiasDesdeApi } from '@/services/api'; 
+import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -203,6 +203,8 @@ const sincronizarPerfil = async (userId: number, correo: string, token: string) 
 
 // Nueva función para obtener el usuario local sin errores de scope
 //Uso en las Tablas MMEBRESIA Y CREDITOS
+
+//MEMBRESIAS
   const obtenerUsuarioLocal = async () => {
     return await drizzleDb.select().from(schema.usersdb).limit(1);
 };
@@ -210,56 +212,99 @@ const sincronizarPerfil = async (userId: number, correo: string, token: string) 
 // --- 5. OBTENER MEMBRESÍAS (SOLO SQLITE) ---
 const obtenerMembresiasLocal = async (usuarioId: number) => {
     try {
-        return await drizzleDb
+        const resultado = await drizzleDb
             .select()
             .from(schema.membresiasdb)
             .where(eq(schema.membresiasdb.userId, usuarioId));
+
+        console.log("✅ Membresías recuperadas de SQLite:", resultado.length);
+        return resultado;
     } catch (error) {
         console.error("❌ Error al leer de SQLite:", error);
         return [];
     }
 };
 
-// --- 6. PROCESAR Y GUARDAR (LLAMA AL API Y GUARDA EN SQLITE) ---
-const actualizarBaseDatosLocalMembresia = async (usuarioId: number) => {
+// --- 5. PROCESAR Y GUARDAR (LLAMA AL API Y GUARDA EN SQLITE) ---
+const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: number) => {
     try {
-        // Usamos la función que ya tiene el nombre en api.js
-        const membresiasApi = await sincronizarMembresiasDesdeApi(usuarioId);
+        // 1. Llamamos al API pasando ambos IDs
+        const membresiasApi = await sincronizarMembresiasDesdeApi(usuarioId, gymId);
 
         if (membresiasApi && membresiasApi.length > 0) {
-            // Limpiamos lo viejo
+            // 2. Limpiamos solo las membresías de este usuario en SQLite
             await drizzleDb.delete(schema.membresiasdb).where(eq(schema.membresiasdb.userId, usuarioId));
 
-            // Insertamos lo nuevo
+            // 3. Insertamos lo nuevo mapeando los nombres del API de C#
             for (const m of membresiasApi) {
                 await drizzleDb.insert(schema.membresiasdb).values({
                     folio: m.FolioMembresia.toString(),
                     tipo: m.TipoMembresia,
                     fechaInicio: m.FechaInicio,
-                    fechaFin: m.FechaVencimiento,
-                    status: m.Estatus === "Activa" ? 1 : 0,
+                    fechaFin: m.FechaVencimiento, // El API ahora manda FechaVencimiento
+                    status: m.Estatus === "Activa" ? 1 : 0, // Convertimos string a boolean/int para SQLite
                     userId: usuarioId,
+                    // Si agregaste gymId a tu esquema de SQLite, inclúyelo aquí:
+                    //gymId: gymId 
                 });
             }
-            console.log("✅ SQLite actualizado con datos de la API");
+            console.log(`✅ SQLite actualizado: ${membresiasApi.length} membresías del gimnasio ${gymId}`);
         }
     } catch (error) {
-        console.error("❌ Error al actualizar SQLite:", error);
+        console.error("❌ Error al actualizar SQLite desde API:", error);
     }
 };
 
-// --- 5. OBTENER CREDITOS DEL MÓVIL ROOT ---
-const obtenerCreditosLocal = async () => {
-  try {
-    return await drizzleDb.select().from(schema.creditosdb);
-  } catch (error) {
-    console.error("❌ Error al obtener créditos:", error);
-    return [];
-  }
+// --- 6. OBTENER CRÉDITOS DEL MÓVIL (LECTURA SQLITE) ---
+const obtenerCreditosLocal = async (usuarioId: number) => {
+    try {
+        // Leemos de la tabla creditosdb filtrando por el dueño
+        const resultado = await drizzleDb
+            .select()
+            .from(schema.creditosdb)
+            .where(eq(schema.creditosdb.userId, usuarioId));
+            
+        console.log("✅ Créditos recuperados de SQLite:", resultado.length);
+        return resultado;
+    } catch (error) {
+        console.error("❌ Error al obtener créditos locales:", error);
+        return [];
+    }
+};
+
+// --- 6. PROCESAR Y GUARDAR CRÉDITOS (API -> SQLITE) ---
+const actualizarBaseDatosLocalCreditos = async (usuarioId: number) => {
+    try {
+        // 1. Llamamos a la función del api.js (asegúrate de crearla allá)
+        const creditosApi = await sincronizarCreditosDesdeApi(usuarioId);
+
+        if (creditosApi && creditosApi.length > 0) {
+            // 2. Limpiamos los créditos anteriores de este usuario
+            await drizzleDb.delete(schema.creditosdb)
+                           .where(eq(schema.creditosdb.userId, usuarioId));
+
+            // 3. Insertamos los datos frescos
+            for (const c of creditosApi) {
+                await drizzleDb.insert(schema.creditosdb).values({
+                    folioCredito: c.FolioCredito.toString(),
+                    paquete: c.Paquete,
+                    tipo: c.Tipo,
+                    fechaPago: c.FechaPago,
+                    fechaExpiracion: c.FechaExpiracion,
+                    estatus: c.Estatus === "Activo" ? 1 : 0,
+                    userId: usuarioId, // Mantenemos la relación local
+                });
+            }
+            console.log("✅ SQLite actualizado con créditos de la API");
+        }
+    } catch (error) {
+        console.error("❌ Error al actualizar créditos en SQLite:", error);
+    }
 };
 
 
-// --- ACTUALIZAR CONTRASEÑA --- //
+
+// --- 7. ACTUALIZAR CONTRASEÑA --- //
 const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => {
   try {
     // Usamos drizzleDb (el que creaste con useMemo)
@@ -277,6 +322,6 @@ const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => 
 };
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
-    actualizarBaseDatosLocalMembresia, actualizarPassword };
+    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword };
 }
 

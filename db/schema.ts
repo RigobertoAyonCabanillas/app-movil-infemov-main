@@ -36,4 +36,5 @@ export const creditosdb = sqliteTable('creditosdb', {
   fechaPago: text('fechaPago'),
   fechaExpiracion: text('fechaExpiracion'),
   estatus: integer('estatus'), // 1: Activo, 0: Agotado/Vencido
+  userId: integer('userId'),
 });

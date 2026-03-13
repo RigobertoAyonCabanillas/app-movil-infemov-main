@@ -52,7 +52,8 @@ async function initializeDatabase(db: SQLiteDatabase) {
       tipo TEXT,
       fechaPago TEXT,
       fechaExpiracion TEXT,
-      estatus INTEGER
+      estatus INTEGER,
+      userId INTEGER
     );
     `);
     
