@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const API_URL = 'http://192.168.0.137:5254/api/auth';
+const API_URL = 'http://100.116.49.102:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -167,6 +167,8 @@ export const enviarDatosLogin = async (correo, contrasena, gymId) => {
     const dataDesencriptada = desencriptarDatos(dataCifrada.data);
 
     console.log("✅ Login exitoso y data desencriptada");
+    console.log("Datos Login: ", dataDesencriptada);
+
     // Esto ahora contendrá: { Token, Id, Correo, GimnasioActual }
     return dataDesencriptada; 
 
@@ -228,47 +230,81 @@ export const sincronizarMembresiasDesdeApi = async (usuarioId, gymId) => {
         const result = await response.json();
 
         // 2. El backend devuelve { Data: "cadena_cifrada" }
-        if (result.data) {
+        if (result.data || result.Data) {
             const datosClaros = desencriptarDatos(result.data);
             
-            // 3. Verificamos si es string para parsear, o si ya es objeto
-            const objetoData = (typeof datosClaros === 'string') 
-                ? JSON.parse(datosClaros) 
-                : datosClaros;
+          const objetoData = (typeof datosClaros === 'string') 
+              ? JSON.parse(datosClaros) 
+              : datosClaros;
 
-            // 4. El backend empaqueta todo en un objeto { Membresias: [...] }
-            const { Membresias } = objetoData;
-            
-            console.log(`✅ Membresias cargadas para el gimnasio ${gymId}:`, Membresias.length);
-            return Membresias;
+          let listaFinal = [];
+
+          // VALIDACIÓN CRUCIAL:
+          if (objetoData.Membresias) {
+              if (typeof objetoData.Membresias === 'string') {
+                  // Si el backend mandó el array como un string (lo que se ve en tu log)
+                  listaFinal = JSON.parse(objetoData.Membresias);
+              } else {
+                  // Si ya es un array normal
+                  listaFinal = objetoData.Membresias;
+              }
+          }
+        console.log(`✅ Membresias procesadas correctamente:`, listaFinal.length);
+        return listaFinal;
+    } 
+        } catch (error) {
+            console.error("❌ Error en sincronizarMembresiasDesdeApi:", error);
+            throw error;
         }
-
-        return []; // Retornamos lista vacía si no hay data
-        
-    } catch (error) {
-        console.error("❌ Error en sincronizarMembresiasDesdeApi:", error);
-        throw error;
-    }
+      
 };
 
-// Tabla de Creditos
-export const sincronizarCreditosDesdeApi = async (usuarioId) => {
+// Tabla de Creditos - Actualizada con gymId y manejo de encriptación
+export const sincronizarCreditosDesdeApi = async (usuarioId, gymId) => {
     try {
-        const response = await fetch(`${API_URL}/mis-creditos/${usuarioId}`);
+        // 1. Agregamos el gymId a la URL como pide el nuevo endpoint [HttpGet("mis-creditos/{usuarioId}/{superUsuarioId}")]
+        const response = await fetch(`${API_URL}/mis-creditos/${usuarioId}/${gymId}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.Error || `Error del servidor: ${response.status}`);
+        }
+
         const result = await response.json();
 
-        if (result.data) {
-            const datosClaros = desencriptarDatos(result.data);
+        // 2. Manejo de datos (Cifrados o Planos)
+        // Si viene 'data' o 'Data', significa que la encriptación está activa
+        if (result.data || result.Data) {
+            const rawData = result.data || result.Data;
+            const datosClaros = desencriptarDatos(rawData);
+
             
-            // Manejamos si ya viene como objeto o hay que parsear string
+
             const objetoData = (typeof datosClaros === 'string') 
                 ? JSON.parse(datosClaros) 
                 : datosClaros;
-            
-            const { Creditos } = objetoData;
-             console.log("Creditos listas:", Creditos);
-            return Creditos;
+
+            let listaCreditos = [];
+
+            // 3. Validación de contenido (Maneja si el backend envía el array como string o objeto)
+            if (objetoData.Creditos) {
+                listaCreditos = (typeof objetoData.Creditos === 'string')
+                    ? JSON.parse(objetoData.Creditos)
+                    : objetoData.Creditos;
+            }
+
+            console.log("✅ Créditos listos (Cifrados):", listaCreditos.length);
+            return listaCreditos;
+        } 
+        
+        // 4. Si NO viene 'Data', pero sí 'Creditos' directamente (como lo tienes ahorita para Postman)
+        if (result.Creditos) {
+            console.log("✅ Créditos listos (Texto Plano):", result.Creditos.length);
+            return result.Creditos;
         }
+
+        return [];
+
     } catch (error) {
         console.error("❌ Error en fetch API Créditos:", error);
         throw error;

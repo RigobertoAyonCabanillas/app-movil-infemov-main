@@ -49,17 +49,13 @@ export default function Login() {
   }
 
   try {
-    // 3. Enviamos los 3 datos: email, password y SuperUsuarioId (que es tu gymSelected)
-    // Asegúrate de que enviarDatosLogin acepte este tercer parámetro
-    const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
+    // 1. Una sola función que hace el fetch Y el guardado local
+  const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected);
 
-    if (respuestaApi) {
-      // Guardamos la sesión localmente
-      await loginUsuarioProceso(email, password); 
-      
-      // Navegamos al Home
-      router.replace("/(tabs)/home");
-    }
+  if (usuarioLogueado) {
+    // 2. Solo si el proceso completo terminó, navegamos
+    router.replace("/(tabs)/home");
+  }
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : "Error desconocido";
     

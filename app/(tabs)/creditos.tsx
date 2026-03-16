@@ -43,16 +43,16 @@ export default function Creditos() {
         const usuarios = await obtenerUsuarioLocal();
         const usuarioActual = usuarios[0]; 
 
-        if (usuarioActual && isMounted) {
+        if (usuarioActual && isMounted && usuarioActual.gymId !== null) {
             // Suponiendo que el gymId lo tienes guardado en el usuario
             // O si lo tienes en una variable de estado tras el login
-            const gymId = usuarioActual.superUsuarioId; 
+            const gymId = usuarioActual.gymId; 
 
         // 2. Ahora pasamos AMBOS argumentos
         await actualizarBaseDatosLocalMembresia(usuarioActual.id, gymId);
 
             // 3. Sincronizamos Créditos (API -> SQLite) <--- ESTA ES LA QUE FALTABA
-            await actualizarBaseDatosLocalCreditos(usuarioActual.id);
+            await actualizarBaseDatosLocalCreditos(usuarioActual.id, gymId);
 
             // 4. Obtenemos de SQLite filtrando por ese ID para la UI
             const resM = await obtenerMembresiasLocal(usuarioActual.id);
@@ -181,62 +181,76 @@ const HeaderFiltro = ({ title, id }: { title: string, id: string }) => (
                 {/* Eliminamos el ancho fijo del View/DataTable para que crezca con las columnas */}
                 <DataTable style={{ alignSelf: 'flex-start' }}>
                     <DataTable.Header style={styles.headerBg}>
-                        {/* Renderizado Condicional de Columnas */}
-                        <HeaderFiltro title="Folio" id={index === 0 ? "folioCredito" : "folio"} />
-                        <HeaderFiltro title={index === 0 ? "Paquete" : "Tipo"} id={index === 0 ? "paquete" : "tipo"} />
-                        <HeaderFiltro title={index === 0 ? "Tipo" : "Inicio"} id={index === 0 ? "tipo" : "fechaInicio"} />
-                        <HeaderFiltro title={index === 0 ? "Pago" : "Vence"} id={index === 0 ? "fechaPago" : "fechaFin"} />
-                        
-                        {/* Aquí puedes agregar más columnas fácilmente */}
-                        {index === 0 && <HeaderFiltro title="Expira" id="fechaExpiracion" />}
-                        
+                        {/* 1. FOLIO */}
+                        <HeaderFiltro 
+                            title={index === 0 ? "FOLIO CRÉDITO" : "FOLIO MEMBRESÍA"} 
+                            id={index === 0 ? "folioCredito" : "folioMembresia"} 
+                        />
+
+                        {/* 2. EXPIRA (Créditos) / TIPO (Membresía) */}
+                        <HeaderFiltro 
+                            title={index === 0 ? "FECHA EXPIRACIÓN" : "TIPO MEMBRESÍA"} 
+                            id={index === 0 ? "fechaExpiracion" : "tipo"} 
+                        />
+
+                        {/* 3. PAQUETE (Créditos) / INICIO (Membresía) */}
+                        <HeaderFiltro 
+                            title={index === 0 ? "PAQUETE" : "FECHA DE INICIO"} 
+                            id={index === 0 ? "paquete" : "fechaInicio"} 
+                        />
+
+                        {/* 4. PAGO (Créditos) / VENCE (Membresía) */}
+                        <HeaderFiltro 
+                            title={index === 0 ? "FECHA DE PAGO" : "FECHA DE VENCIMIENTO"} 
+                            id={index === 0 ? "fechaPago" : "fechaFin"} 
+                        />
+
+                        {/* 5. ESTATUS */}
                         <DataTable.Title numeric style={styles.statusCell}>
-                            <Text style={styles.headerLabel}>Estatus</Text>
+                            <Text style={styles.headerLabel}>ESTATUS</Text>
                         </DataTable.Title>
+
+                     
                     </DataTable.Header>
 
                     {itemsPaginados.map((item: any) => (
-                    <DataTable.Row key={item.id || item.FolioMembresia} style={styles.row}>
-                        {/* Folio: Usa FolioMembresia del C# */}
-                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>
-                                {index === 0 ? item.folioCredito : item.FolioMembresia}
-                            </Text>
-                        </DataTable.Cell>
-                        
-                        {/* Tipo: Muestra "Mensual", "Semanal", etc. */}
-                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>
-                                {index === 0 ? item.paquete : item.TipoMembresia}
-                            </Text>
-                        </DataTable.Cell>
+                        <DataTable.Row key={item.id || item.folioMembresia || item.folioCredito} style={styles.row}>
+                            
+                            {/* 1. FOLIO */}
+                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                                <Text style={styles.cellText}>{index === 0 ? item.folioCredito : item.folioMembresia}</Text>
+                            </DataTable.Cell>
 
-                        {/* Fecha Inicio */}
-                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>
-                                {index === 0 ? item.tipo : item.FechaInicio}
-                            </Text>
-                        </DataTable.Cell>
+                            {/* 2. FECHA EXPIRACIÓN / TIPO MEMBRESÍA */}
+                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                                <Text style={styles.cellText}>{index === 0 ? item.fechaExpiracion : item.tipo}</Text>
+                            </DataTable.Cell>
 
-                        {/* Fecha Vencimiento: Ya viene formateada "dd de MMMM..." */}
-                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                            <Text style={styles.cellText}>
-                                {index === 0 ? item.fechaPago : item.FechaVencimiento}
-                            </Text>
-                        </DataTable.Cell>
+                            {/* 3. PAQUETE / FECHA INICIO */}
+                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                                <Text style={styles.cellText}>{index === 0 ? item.paquete : item.fechaInicio}</Text>
+                            </DataTable.Cell>
 
-                        {/* Estatus: Compara el string directo "Activa" */}
-                        <DataTable.Cell numeric style={styles.statusCell}>
-                            <Text style={{ 
-                                color: item.Estatus === "Activa" ? '#2ecc71' : '#e74c3c', 
-                                fontWeight: 'bold', 
-                                fontSize: 12 
-                            }}>
-                                {item.Estatus}
-                            </Text>
-                        </DataTable.Cell>
-                    </DataTable.Row>
-                ))}
+                            {/* 4. FECHA PAGO / FECHA FIN */}
+                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
+                                <Text style={styles.cellText}>{index === 0 ? item.fechaPago : item.fechaFin}</Text>
+                            </DataTable.Cell>
+
+                            {/* 5. ESTATUS */}
+                            <DataTable.Cell numeric style={styles.statusCell}>
+                                <Text style={{ 
+                                    color: (index === 0 ? item.estatus : item.status) === 1 ? '#2ecc71' : '#e74c3c', 
+                                    fontWeight: 'bold', fontSize: 12 
+                                }}>
+                                    {(index === 0 ? item.estatus : item.status) === 1 ? "ACTIVO" : "VENCIDO"}
+                                </Text>
+                            </DataTable.Cell>
+
+                          
+                            
+                        </DataTable.Row>
+                    ))}
+
                 </DataTable>
             </ScrollView>
 
@@ -267,8 +281,12 @@ const styles = StyleSheet.create({
     headerLabel: { fontWeight: 'bold', color: '#333', fontSize: 13, textAlign: 'center' },
     inputMini: { margin: 10, height: 40, fontSize: 12 },
     row: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0', height: 55 },
-    cellText: { fontSize: 12, textAlign: 'center' },
-    
+    cellText: {
+        fontSize: 11, // Bajamos un poco el tamaño (estaba en 12)
+        textAlign: 'center',
+        flexWrap: 'wrap', // Esto permite que el texto baje si no cabe
+        lineHeight: 14,   // Espaciado entre líneas si salta
+    },    
     // Al usar numeric en el componente, estas propiedades de estilo ahora sí centran el contenido
     fixedCell: { 
         width: 140, 

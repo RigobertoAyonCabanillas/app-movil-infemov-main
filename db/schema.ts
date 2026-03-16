@@ -20,11 +20,11 @@ export const usersdb = sqliteTable('usersdb', {
 export const membresiasdb = sqliteTable('membresiasdb', {
   // En SQLite con Drizzle, autoIncrement va dentro de un objeto de configuración
   id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }), 
-  folio: text('folio'), // Cámbialo a text si el folio lleva letras
+  folioMembresia: text('folioMembresia'), // Cámbialo a text si el folio lleva letras
   tipo: text('tipo'),
   fechaInicio: text('fechaInicio'),
   fechaFin: text('fechaFin'),
-  status: integer('status'), // SQLite no tiene boolean real, usa 0 o 1
+  estatus: integer('estatus'), // SQLite no tiene boolean real, usa 0 o 1
   userId: integer('userId'),
 });
 
@@ -32,7 +32,6 @@ export const creditosdb = sqliteTable('creditosdb', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   folioCredito: text('folioCredito'),
   paquete: text('paquete'),
-  tipo: text('tipo'),
   fechaPago: text('fechaPago'),
   fechaExpiracion: text('fechaExpiracion'),
   estatus: integer('estatus'), // 1: Activo, 0: Agotado/Vencido

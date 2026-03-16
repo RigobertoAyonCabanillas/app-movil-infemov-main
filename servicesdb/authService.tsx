@@ -48,11 +48,11 @@ export function useAuthService() {
   };
 
   // --- 2. LOGIN LOCAL ---
-const loginUsuarioProceso = async (email: string, password: string) => {
+const loginUsuarioProceso = async (email: string, password: string, gymSelected: number) => {
   try {
     // 1. Validar con el servidor. 
     // Como ya desencriptamos en api.js, 'respuestaApi' YA ES el objeto con ID y Token.
-    const respuestaApi = await enviarDatosLogin(email, password);
+    const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
       // 2. Limpiar sesión anterior
@@ -71,13 +71,16 @@ const loginUsuarioProceso = async (email: string, password: string) => {
         fechaNacimiento: "",
         telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
         deviceId: "",
-        gymId: respuestaApi.SuperUsuarioID 
+        gymId: respuestaApi.GimnasioActual 
       });
 
       console.log("✅ ID y Token guardados en SQLite");
       
-      setUsers({ id: respuestaApi.usuario.id }); 
+      setUsers({ id: respuestaApi.Id }); 
     }
+
+    return respuestaApi;
+
   } catch (error) {
     console.error("Error en login local:", error);
     alert("No se pudo iniciar sesión.");
@@ -238,11 +241,11 @@ const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: numbe
             // 3. Insertamos lo nuevo mapeando los nombres del API de C#
             for (const m of membresiasApi) {
                 await drizzleDb.insert(schema.membresiasdb).values({
-                    folio: m.FolioMembresia.toString(),
+                    folioMembresia: m.FolioMembresia.toString(),
                     tipo: m.TipoMembresia,
                     fechaInicio: m.FechaInicio,
                     fechaFin: m.FechaVencimiento, // El API ahora manda FechaVencimiento
-                    status: m.Estatus === "Activa" ? 1 : 0, // Convertimos string a boolean/int para SQLite
+                    estatus: m.Estatus === "Activa" ? 1 : 0, // Convertimos string a boolean/int para SQLite
                     userId: usuarioId,
                     // Si agregaste gymId a tu esquema de SQLite, inclúyelo aquí:
                     //gymId: gymId 
@@ -273,32 +276,33 @@ const obtenerCreditosLocal = async (usuarioId: number) => {
 };
 
 // --- 6. PROCESAR Y GUARDAR CRÉDITOS (API -> SQLITE) ---
-const actualizarBaseDatosLocalCreditos = async (usuarioId: number) => {
+const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number) => {
     try {
-        // 1. Llamamos a la función del api.js (asegúrate de crearla allá)
-        const creditosApi = await sincronizarCreditosDesdeApi(usuarioId);
+        // 1. Llamamos al API pasando ambos IDs (usuarioId y gymId)
+        const creditosApi = await sincronizarCreditosDesdeApi(usuarioId, gymId);
 
         if (creditosApi && creditosApi.length > 0) {
             // 2. Limpiamos los créditos anteriores de este usuario
             await drizzleDb.delete(schema.creditosdb)
                            .where(eq(schema.creditosdb.userId, usuarioId));
 
-            // 3. Insertamos los datos frescos
+            // 3. Insertamos los datos frescos mapeando los nombres del API de C#
             for (const c of creditosApi) {
                 await drizzleDb.insert(schema.creditosdb).values({
-                    folioCredito: c.FolioCredito.toString(),
-                    paquete: c.Paquete,
-                    tipo: c.Tipo,
+                    // Usamos los nombres exactos que definiste en tu Select de C#
+                    folioCredito: c.FolioCredito.toString(), 
+                    paquete: c.Paquete || "Paquete General",
                     fechaPago: c.FechaPago,
                     fechaExpiracion: c.FechaExpiracion,
                     estatus: c.Estatus === "Activo" ? 1 : 0,
-                    userId: usuarioId, // Mantenemos la relación local
+                    userId: usuarioId, 
+                    // gymId: gymId // Inclúyelo si lo agregaste a tu esquema de tabla creditosdb
                 });
             }
-            console.log("✅ SQLite actualizado con créditos de la API");
+            console.log(`✅ SQLite actualizado: ${creditosApi.length} créditos del gimnasio ${gymId}`);
         }
     } catch (error) {
-        console.error("❌ Error al actualizar créditos en SQLite:", error);
+        console.error("❌ Error al actualizar créditos en SQLite desde API:", error);
     }
 };
 

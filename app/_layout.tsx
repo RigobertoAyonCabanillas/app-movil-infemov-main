@@ -38,11 +38,11 @@ async function initializeDatabase(db: SQLiteDatabase) {
       );
       CREATE TABLE IF NOT EXISTS membresiasdb (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        folio TEXT,
+        folioMembresia TEXT,
         tipo TEXT,
         fechaInicio TEXT,
         fechaFin TEXT,
-        status INTEGER,
+        estatus INTEGER,
         userId INTEGER
       );
       CREATE TABLE IF NOT EXISTS creditosdb (
