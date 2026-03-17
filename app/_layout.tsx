@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { UserProvider } from "../components/UserContext";
+import { PaperProvider } from 'react-native-paper'; // 1. Agrega este import
 
 // Definimos el nombre de la base de datos de forma global
 export const BaseDatos = 'bdMovil';
@@ -84,12 +85,13 @@ export default function Layout() {
         useSuspense
       >
         <UserProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" options={{ title: "Login" }} />
-            <Stack.Screen name="register" options={{ title: "Registro" }} />
-            {/* Grupo de pestañas principales tras el login */}
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
+          <PaperProvider> 
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" options={{ title: "Login" }} />
+              <Stack.Screen name="register" options={{ title: "Registro" }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+          </PaperProvider>
         </UserProvider>
       </SQLiteProvider>
     </Suspense>

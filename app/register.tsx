@@ -109,7 +109,7 @@ const { registrarUsuarioProceso } = useAuthService();
       apellidoMaterno,
       email,
       password, 
-      telefono: `+${callingCode}${telefonoLimpio}`, // Resultado: +52 6441234567      password, 
+      telefono: `+${callingCode}${telefonoLimpio}`, // Resultado: +52 6441234567 
       deviceId, // Ahora ya tiene el valor del await anterior
       estudiante: esEstudiante === 1, // <--- Enviamos true si es 1, false si es 2
       fechaNacimiento: fechaFinal, // Así llega como string "DD/MM/AAAA" a tu API

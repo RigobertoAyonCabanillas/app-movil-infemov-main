@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
+import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -325,7 +325,75 @@ const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => 
   }
 };
 
-  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
+// --- Función para modificar perfil (API + SQLite + Contexto) ---
+const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) => {
+    try {
+        // 1. Llamar al Service de API (Cifrado y Comunicación con .NET)
+        // Se envía el token actual para el [Authorize]
+        const resultadoApi = await actualizarPerfilApi(nuevosDatos, users.token); 
+
+        if (resultadoApi && resultadoApi.Token) {
+            // 2. Actualizar SQLite mapeando de PascalCase (.NET) a camelCase (Drizzle)
+            // Es CRÍTICO guardar el resultadoApi.Token porque el anterior ya no sirve
+            const filasActualizadas = await drizzleDb
+                .update(schema.usersdb)
+                .set({
+                    nombres: nuevosDatos.Nombre || "",
+                    apellidoPaterno: nuevosDatos.ApellidoPaterno || "",
+                    apellidoMaterno: nuevosDatos.ApellidoMaterno || "",
+                    correo: nuevosDatos.Correo || "",
+                    telefono: nuevosDatos.Telefono || "",
+                    token: resultadoApi.Token // El nuevo token que mandó el backend
+                })
+                .where(eq(schema.usersdb.id, userId))
+                .returning(); // Obtenemos el registro actualizado de la BD
+
+            // 3. Actualizar el Contexto Global
+            if (filasActualizadas.length > 0) {
+                setUsers(filasActualizadas[0]); 
+                console.log("✅ Perfil actualizado y Token renovado en SQLite/Contexto");
+            }
+
+            return { 
+                success: true, 
+                message: resultadoApi.Message || "Perfil actualizado correctamente" 
+            };
+        } else {
+            throw new Error("La API no devolvió el nuevo token de seguridad.");
+        }
+    } catch (error: any) {
+        console.error("❌ Error en sincronización de actualización:", error);
+        // No recuperamos datos locales aquí porque es una acción de escritura que falló
+        throw error; 
+    }
+};
+
+const actualizarGimnasioSeleccionado = async (gymId: number, userId: number) => {
+    try {
+        // 1. Actualizar en SQLite usando Drizzle
+        // Mapeamos a tu tabla local 'usersdb'
+        const filasActualizadas = await drizzleDb
+            .update(schema.usersdb)
+            .set({ 
+                gymId: gymId // Usamos la columna que identifica la sucursal actual
+            })
+            .where(eq(schema.usersdb.id, userId))
+            .returning();
+
+        // 2. Actualizar el Contexto Global para que la app cambie de sucursal
+        if (filasActualizadas.length > 0) {
+            setUsers(filasActualizadas[0]);
+            console.log("✅ SQLite y Contexto sincronizados con nueva sucursal");
+        }
+    } catch (error) {
+        console.error("❌ Error en authService al cambiar gym:", error);
+        throw error;
+    }
+};
+
+
+
+  return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
     actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword };
 }
 

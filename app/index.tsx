@@ -15,7 +15,7 @@ import { useAuthService } from "@/servicesdb/authService";
 import { enviarDatosLogin, validarFolioAPI } from "@/services/api";
 
 export default function Login() {
-  const { users } = useContext(UserContext);
+  const { users, setUsers } = useContext(UserContext);
   const router = useRouter();
   const { loginUsuarioProceso } = useAuthService();
 
@@ -54,6 +54,10 @@ export default function Login() {
 
   if (usuarioLogueado) {
     // 2. Solo si el proceso completo terminó, navegamos
+    // IMPORTANTE: Guardar el objeto completo en el contexto
+        // Esto desbloquea el 'if' en la pantalla de Perfil
+        console.log("Datos del login al entrar: ", usuarioLogueado)
+        setUsers(usuarioLogueado);
     router.replace("/(tabs)/home");
   }
   } catch (error) {

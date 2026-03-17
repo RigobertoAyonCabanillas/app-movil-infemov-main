@@ -310,3 +310,125 @@ export const sincronizarCreditosDesdeApi = async (usuarioId, gymId) => {
         throw error;
     }
 };
+
+// Actualización de Perfil con cifrado AES-ECB
+// En tu archivo de servicios donde esté actualizarPerfilApi
+export const actualizarPerfilApi = async (datos, token) => {
+  try {
+    const jsonString = JSON.stringify(datos);
+    const key = CryptoJS.enc.Utf8.parse("k3P9zR7mW2vL5xN8");
+
+    // 1. Cifrado para enviar
+    const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
+    });
+
+    const response = await fetch(`${API_URL}/actualizar-perfil`, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}` 
+      },
+      body: JSON.stringify({ Data: cifrado.toString() }),
+    });
+
+    const resultadoJson = await response.json();
+
+    // 2. Validación de seguridad para evitar el error de 'ciphertext'
+    // Verificamos que la respuesta sea 200 y que traiga el campo Data o data
+    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
+
+    if (!response.ok || !payloadCifrado) {
+        // Si el servidor mandó un error (ej. 400), probablemente no viene cifrado
+        const mensajeError = resultadoJson.Message || "Error en el servidor";
+        throw new Error(mensajeError);
+    }
+
+    // 3. Llamada a tu función centralizada
+    const datosClaros = desencriptarDatos(payloadCifrado);
+
+    if (!datosClaros) {
+        throw new Error("La respuesta del servidor no tiene un formato válido.");
+    }
+
+    return datosClaros; // Retorna { Message, Token }
+    
+  } catch (error) {
+    console.error("❌ Error en actualización:", error.message);
+    throw error;
+  }
+};
+
+// Actualizar Contraseña en el Servidor
+export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token) => {
+  try {
+    const datos = {
+      PasswordActual: passwordActual,
+      NuevaPassword: nuevaPassword
+    };
+
+    const jsonString = JSON.stringify(datos);
+    const key = CryptoJS.enc.Utf8.parse("k3P9zR7mW2vL5xN8");
+
+    // 1. Cifrar para el servidor (.NET espera EncryptedPayload)
+    const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
+    });
+
+    const response = await fetch(`${API_URL}/actualizar-password`, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ Data: cifrado.toString() }),
+    });
+
+    const resultadoJson = await response.json();
+
+    // 2. Validar respuesta
+    if (!response.ok) {
+        throw new Error(resultadoJson.Error || "Error al cambiar la contraseña");
+    }
+
+    // 3. Descifrar la respuesta del servidor (Message exitoso)
+    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
+    const datosClaros = desencriptarDatos(payloadCifrado);
+
+    return datosClaros; // Retorna { Message: "..." }
+  } catch (error) {
+    console.error("❌ Error en actualizarPasswordApi:", error.message);
+    throw error;
+  }
+};
+
+//Lista de Gimnasios
+export const obtenerGimnasiosPorCorreo = async (correo) => {
+  try {
+    // Los parámetros FromQuery se pasan en la URL: ?correo=valor
+    const response = await fetch(`${API_URL}/gimnasios-por-correo?correo=${encodeURIComponent(correo)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        // Si el endpoint tiene [Authorize], añade el Bearer token aquí
+      },
+    });
+
+    if (!response.ok) throw new Error(`Error: ${response.status}`);
+
+    const resultado = await response.json();
+    
+    // Desencriptamos la "Data" que manda el C#
+    const dataLimpia = desencriptarDatos(resultado.Data || resultado.data);
+    
+    // Según tu C#, la estructura es { Correo, Total, Gimnasios: [...] }
+    return dataLimpia.Gimnasios; 
+  } catch (error) {
+    console.error("❌ Error al obtener gimnasios:", error);
+    return [];
+  }
+};
