@@ -7,7 +7,7 @@ export const usersdb = sqliteTable('usersdb', {
   nombres: text('nombres'),    // Quitamos .notNull() para evitar errores si vienen vacíos
   apellidoPaterno: text('apellidoPaterno'),
   apellidoMaterno: text('apellidoMaterno'),
-  correo: text('correo').unique(),
+  correo: text('correo'),
   telefono: text('telefono'),
   contrasena: text('contrasena').notNull(), // Esta sí es obligatoria
   estudiante: text('estudiante'),

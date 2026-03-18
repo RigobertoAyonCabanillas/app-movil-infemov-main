@@ -1,6 +1,7 @@
 import CryptoJS from 'crypto-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth';
+const API_URL = 'http://192.168.0.137:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -406,29 +407,89 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
   }
 };
 
-//Lista de Gimnasios
-export const obtenerGimnasiosPorCorreo = async (correo) => {
+// --- FUNCION GESTIONAR SUCURSALES (CORREGIDA) ---
+export const gestionarSucursalesApi = async (correo, password = "", superUsuarioId = null) => {
   try {
-    // Los parámetros FromQuery se pasan en la URL: ?correo=valor
-    const response = await fetch(`${API_URL}/gimnasios-por-correo?correo=${encodeURIComponent(correo)}`, {
-      method: 'GET',
-      headers: {
+    // 1. Obtener y LIMPIAR el token
+    let token = await AsyncStorage.getItem('userToken'); 
+    
+    // Si el token viene de un JSON.stringify previo, tendrá comillas extras. 
+    // Esto las elimina:
+    if (token) {
+        token = token.replace(/^"|"$/g, ''); 
+    }
+
+    if (!token) {
+        throw new Error("No se encontró una sesión activa.");
+    }
+
+    // 2. Preparar el objeto para el C#
+    const datosRequest = {
+      Correo: correo?.trim(),
+      Password: password || "", 
+      SuperUsuarioId: superUsuarioId ? Number(superUsuarioId) : null
+    };
+
+    console.log("🔐 Enviando GESTIÓN SUCURSAL:", datosRequest);
+
+    const jsonString = JSON.stringify(datosRequest);
+    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
+
+    // 3. Cifrar (AES-ECB-Pkcs7)
+    const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
+    }).toString();
+
+    // 4. Petición Fetch
+    const response = await fetch(`${API_URL}/gestionar-sucursales`, {
+      method: 'POST',
+      headers: { 
         'Content-Type': 'application/json',
-        // Si el endpoint tiene [Authorize], añade el Bearer token aquí
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}` // Ahora el token va limpio
       },
+      body: JSON.stringify({ Data: cifrado }),
     });
 
-    if (!response.ok) throw new Error(`Error: ${response.status}`);
+    // --- MANEJO DE RESPUESTA ---
+    // Si es 401, lanzamos el error de sesión antes de intentar leer el body
+    if (response.status === 401) {
+        throw new Error("Sesión expirada. Por favor, reingresa.");
+    }
 
-    const resultado = await response.json();
+    const text = await response.text(); 
     
-    // Desencriptamos la "Data" que manda el C#
-    const dataLimpia = desencriptarDatos(resultado.Data || resultado.data);
+    if (!text) {
+      throw new Error("El servidor no devolvió contenido.");
+    }
+
+    let resultadoJson;
+    try {
+      resultadoJson = JSON.parse(text);
+    } catch (e) {
+      throw new Error("La respuesta del servidor no es un formato válido.");
+    }
+
+    if (!response.ok) {
+      throw new Error(resultadoJson.Error || resultadoJson.error || "Error en el servidor");
+    }
+
+    // 5. Descifrar respuesta
+    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
     
-    // Según tu C#, la estructura es { Correo, Total, Gimnasios: [...] }
-    return dataLimpia.Gimnasios; 
+    if (!payloadCifrado) {
+       throw new Error("No se recibió la información cifrada.");
+    }
+
+    const jsonDescifrado = desencriptarDatos(payloadCifrado);
+    
+    return typeof jsonDescifrado === 'string' 
+      ? JSON.parse(jsonDescifrado) 
+      : jsonDescifrado;
+
   } catch (error) {
-    console.error("❌ Error al obtener gimnasios:", error);
-    return [];
+    console.error("❌ Error en gestionarSucursalesApi:", error.message);
+    throw error;
   }
 };

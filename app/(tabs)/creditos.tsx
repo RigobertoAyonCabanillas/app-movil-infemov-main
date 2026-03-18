@@ -1,5 +1,5 @@
 import { useFocusEffect } from "expo-router";
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useContext } from 'react';
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { DataTable, Searchbar, PaperProvider, Menu, Divider, TextInput, Button } from 'react-native-paper'; //Libreria de DataTable
 import { Container, InfoCard, NavRow, IconButton } from "@/styles/creditosStyle";
@@ -7,8 +7,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthService } from "@/servicesdb/authService"; 
 import * as schema from '@/db/schema';
 import { InferSelectModel } from 'drizzle-orm';
+import { UserContext } from "@/components/UserContext";
 
 export default function Creditos() {
+
+    const { users, setUsers } = useContext(UserContext);
+    
+
     const [index, setIndex] = useState(0); 
     const [searchGlobal, setSearchGlobal] = useState('');
     
@@ -35,39 +40,38 @@ export default function Creditos() {
         setFiltrosColumna({});
     };
 
-    useFocusEffect(useCallback(() => {
-    let isMounted = true;
-    
-    const cargar = async () => {
-        // 1. Buscamos el usuario logueado en SQLite
-        const usuarios = await obtenerUsuarioLocal();
-        const usuarioActual = usuarios[0]; 
+    useFocusEffect(
+    useCallback(() => {
+        let isMounted = true;
 
-        if (usuarioActual && isMounted && usuarioActual.gymId !== null) {
-            // Suponiendo que el gymId lo tienes guardado en el usuario
-            // O si lo tienes en una variable de estado tras el login
-            const gymId = usuarioActual.gymId; 
+        const cargar = async () => {
+            // 1. Buscamos el usuario logueado en SQLite
+            const usuarios = await obtenerUsuarioLocal();
+            const usuarioActual = usuarios[0];
 
-        // 2. Ahora pasamos AMBOS argumentos
-        await actualizarBaseDatosLocalMembresia(usuarioActual.id, gymId);
+            if (usuarioActual && isMounted && usuarioActual.gymId !== null) {
+                const gymId = usuarioActual.gymId;
 
-            // 3. Sincronizamos Créditos (API -> SQLite) <--- ESTA ES LA QUE FALTABA
-            await actualizarBaseDatosLocalCreditos(usuarioActual.id, gymId);
+                // 2. Sincronizamos Membresías y Créditos con el nuevo gymId
+                await actualizarBaseDatosLocalMembresia(usuarioActual.id, gymId);
+                await actualizarBaseDatosLocalCreditos(usuarioActual.id, gymId);
 
-            // 4. Obtenemos de SQLite filtrando por ese ID para la UI
-            const resM = await obtenerMembresiasLocal(usuarioActual.id);
-            const resC = await obtenerCreditosLocal(usuarioActual.id);
+                // 3. Obtenemos de SQLite filtrando para la UI
+                const resM = await obtenerMembresiasLocal(usuarioActual.id);
+                const resC = await obtenerCreditosLocal(usuarioActual.id);
 
-            if (isMounted) {
-                setListaMembresias(resM || []);
-                setListaCreditos(resC || []);
+                if (isMounted) {
+                    setListaMembresias(resM || []);
+                    setListaCreditos(resC || []);
+                }
             }
-        }
-    };
+        };
 
-            cargar();
-            return () => { isMounted = false; };
-        }, []));
+        cargar();
+        return () => { isMounted = false; };
+        
+    }, [users?.gymId]) // 👈 Agrega users?.gymId aquí para re-reaccionar al cambio
+);
 
 
     // Define esto fuera de tu componente o antes del useMemo

@@ -2,10 +2,11 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
+import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, gestionarSucursalesApi, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function useAuthService() {
   const db = useSQLiteContext();//Aqui ya se usa la base de datos para los queris
@@ -73,6 +74,9 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         deviceId: "",
         gymId: respuestaApi.GimnasioActual 
       });
+
+      //Para el tema de cambios de gimnasios desde Ajustes
+      await AsyncStorage.setItem('userToken', respuestaApi.Token);
 
       console.log("✅ ID y Token guardados en SQLite");
       
@@ -368,30 +372,45 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
     }
 };
 
-const actualizarGimnasioSeleccionado = async (gymId: number, userId: number) => {
-    try {
-        // 1. Actualizar en SQLite usando Drizzle
-        // Mapeamos a tu tabla local 'usersdb'
-        const filasActualizadas = await drizzleDb
-            .update(schema.usersdb)
-            .set({ 
-                gymId: gymId // Usamos la columna que identifica la sucursal actual
-            })
-            .where(eq(schema.usersdb.id, userId))
-            .returning();
+const actualizarGimnasioSeleccionado = async (gymId: number, userId: number, correo: string, password: string) => {
+        try {
+            // 1. Llamada a la API (gestionarSucursalesApi ya maneja el cifrado y el Bearer Token)
+            const responseApi = await gestionarSucursalesApi(correo, password, gymId);
 
-        // 2. Actualizar el Contexto Global para que la app cambie de sucursal
-        if (filasActualizadas.length > 0) {
-            setUsers(filasActualizadas[0]);
-            console.log("✅ SQLite y Contexto sincronizados con nueva sucursal");
+            console.log("Respuesta Cambio Gym:", responseApi);
+
+            // 2. Validar éxito basado en tu lógica de C#
+            if (responseApi.Accion === "CambioExitoso" && responseApi.NuevoToken) {
+                
+                // 3. Persistencia del nuevo JWT para futuras peticiones a la API
+                await AsyncStorage.setItem('userToken', responseApi.NuevoToken);
+
+                // 4. Actualización en la base de datos local SQLite (Drizzle)
+                const filasActualizadas = await drizzleDb.update(schema.usersdb)
+                    .set({
+                        gymId: gymId,
+                        token: responseApi.NuevoToken 
+                    })
+                    .where(eq(schema.usersdb.id, userId))
+                    .returning();
+
+                // 5. Sincronización del Contexto Global (Estado del Hook)
+                if (filasActualizadas.length > 0) {
+                    setUsers(filasActualizadas[0]);
+                    console.log("✅ Sistema sincronizado: Nuevo Token y Gym ID guardados.");
+                }
+                
+                return responseApi; 
+            } else {
+                throw new Error("El servidor no pudo confirmar el cambio de sucursal.");
+            }
+
+        } catch (error: any) {
+            console.error("❌ Error en actualizarGimnasioSeleccionado:", error.message);
+            // Re-lanzamos para que handleCambiarGym en el componente muestre el Alert.alert
+            throw error; 
         }
-    } catch (error) {
-        console.error("❌ Error en authService al cambiar gym:", error);
-        throw error;
-    }
-};
-
-
+    };
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
     actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword };

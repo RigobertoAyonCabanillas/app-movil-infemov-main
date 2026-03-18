@@ -28,7 +28,7 @@ async function initializeDatabase(db: SQLiteDatabase) {
         nombres TEXT,
         apellidoPaterno TEXT,
         apellidoMaterno TEXT,
-        correo TEXT UNIQUE,
+        correo TEXT,
         telefono TEXT,
         contrasena TEXT NOT NULL,
         estudiante TEXT,
