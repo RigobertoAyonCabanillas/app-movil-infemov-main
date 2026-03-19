@@ -48,39 +48,45 @@ export function useAuthService() {
     }
   };
 
-  // --- 2. LOGIN LOCAL ---
+// --- 2. LOGIN LOCAL ---
 const loginUsuarioProceso = async (email: string, password: string, gymSelected: number) => {
   try {
-    // 1. Validar con el servidor. 
-    // Como ya desencriptamos en api.js, 'respuestaApi' YA ES el objeto con ID y Token.
     const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
-      // 2. Limpiar sesión anterior
+      // 1. LIMPIEZA TOTAL (Ya lo tienes, es excelente para evitar el error de ID duplicado)
       await drizzleDb.delete(schema.usersdb);
 
-      // 3. INSERTAR solo ID y TOKEN (como pediste) Lo espacios en blanco se llenan en el endpoint de perfil
+      // 2. INSERTAR con datos reales
+      // Si el API ya te devuelve Nombres/Apellidos en el login, 
+      // guárdalos de una vez para que el perfil no salga vacío al inicio.
       await drizzleDb.insert(schema.usersdb).values({
-        id: respuestaApi.Id, // ID 
-        token: respuestaApi.Token,// Token de sesión
+        id: respuestaApi.Id, 
+        token: respuestaApi.Token,
         correo: email,
         contrasena: password,
-        nombres: "",
-        apellidoPaterno: "",
-        apellidoMaterno: "",
+        nombres: respuestaApi.Nombres || "", // Trata de usar lo que venga del API
+        apellidoPaterno: respuestaApi.ApellidoPaterno || "",
+        apellidoMaterno: respuestaApi.ApellidoMaterno || "",
+        gymId: respuestaApi.GimnasioActual || gymSelected, // Backup por si el API no lo trae
+        // Los demás campos pueden ir vacíos si el API no los da en el login
         estudiante: "",
         fechaNacimiento: "",
-        telefono: "", // Asegúrate de que estos acepten strings vacíos en tu schema
+        telefono: "", 
         deviceId: "",
-        gymId: respuestaApi.GimnasioActual 
       });
 
-      //Para el tema de cambios de gimnasios desde Ajustes
-      await AsyncStorage.setItem('userToken', respuestaApi.Token);
+      // 3. ACTUALIZAR ESTADO GLOBAL (MUY IMPORTANTE)
+      // Agregamos TODOS los campos básicos para que el Contexto no pierda datos
+      setUsers({ 
+        id: respuestaApi.Id,
+        token: respuestaApi.Token,
+        gymId: respuestaApi.GimnasioActual || gymSelected,
+        nombres: respuestaApi.Nombres || "",
+        correo: email
+      }); 
 
-      console.log("✅ ID y Token guardados en SQLite");
-      
-      setUsers({ id: respuestaApi.Id }); 
+      console.log("✅ Sesión iniciada: ID", respuestaApi.Id, "Gym:", respuestaApi.GimnasioActual);
     }
 
     return respuestaApi;
@@ -235,30 +241,30 @@ const obtenerMembresiasLocal = async (usuarioId: number) => {
 // --- 5. PROCESAR Y GUARDAR (LLAMA AL API Y GUARDA EN SQLITE) ---
 const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: number) => {
     try {
-        // 1. Llamamos al API pasando ambos IDs
         const membresiasApi = await sincronizarMembresiasDesdeApi(usuarioId, gymId);
+        
+        // Log para ver qué está llegando realmente
+        console.log(`📡 Datos recibidos del Gym ${gymId}:`, membresiasApi?.length || 0);
+
+        // 1. Borramos solo lo de este usuario (Limpieza total antes de refrescar)
+        await drizzleDb.delete(schema.membresiasdb).where(eq(schema.membresiasdb.userId, usuarioId));
 
         if (membresiasApi && membresiasApi.length > 0) {
-            // 2. Limpiamos solo las membresías de este usuario en SQLite
-            await drizzleDb.delete(schema.membresiasdb).where(eq(schema.membresiasdb.userId, usuarioId));
+            const dataToInsert = membresiasApi.map((m: any) => ({
+                folioMembresia: (m.FolioMembresia || m.folio || "").toString(),
+                tipo: m.TipoMembresia || m.tipo || "Sin Tipo",
+                fechaInicio: m.FechaInicio || m.fechaInicio || "",
+                fechaFin: m.FechaVencimiento || m.fechaFin || "", 
+                estatus: (m.Estatus === "Activa" || m.estatus === 1) ? 1 : 0,
+                userId: usuarioId,
+                gymId: gymId // <--- AHORA SÍ SE GUARDA EL GYM
+            }));
 
-            // 3. Insertamos lo nuevo mapeando los nombres del API de C#
-            for (const m of membresiasApi) {
-                await drizzleDb.insert(schema.membresiasdb).values({
-                    folioMembresia: m.FolioMembresia.toString(),
-                    tipo: m.TipoMembresia,
-                    fechaInicio: m.FechaInicio,
-                    fechaFin: m.FechaVencimiento, // El API ahora manda FechaVencimiento
-                    estatus: m.Estatus === "Activa" ? 1 : 0, // Convertimos string a boolean/int para SQLite
-                    userId: usuarioId,
-                    // Si agregaste gymId a tu esquema de SQLite, inclúyelo aquí:
-                    //gymId: gymId 
-                });
-            }
-            console.log(`✅ SQLite actualizado: ${membresiasApi.length} membresías del gimnasio ${gymId}`);
+            await drizzleDb.insert(schema.membresiasdb).values(dataToInsert);
+            console.log("✅ Membresías guardadas en SQLite");
         }
     } catch (error) {
-        console.error("❌ Error al actualizar SQLite desde API:", error);
+        console.error("❌ Error en actualización local:", error);
     }
 };
 
@@ -282,34 +288,36 @@ const obtenerCreditosLocal = async (usuarioId: number) => {
 // --- 6. PROCESAR Y GUARDAR CRÉDITOS (API -> SQLITE) ---
 const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number) => {
     try {
-        // 1. Llamamos al API pasando ambos IDs (usuarioId y gymId)
+        // 2. Sincronizar desde API (ya no necesita token aquí, fetchSeguro lo hace)
         const creditosApi = await sincronizarCreditosDesdeApi(usuarioId, gymId);
 
-        if (creditosApi && creditosApi.length > 0) {
-            // 2. Limpiamos los créditos anteriores de este usuario
-            await drizzleDb.delete(schema.creditosdb)
-                           .where(eq(schema.creditosdb.userId, usuarioId));
+        console.log(`📡 API Créditos: Recibidos ${creditosApi?.length || 0} registros.`);
 
-            // 3. Insertamos los datos frescos mapeando los nombres del API de C#
-            for (const c of creditosApi) {
-                await drizzleDb.insert(schema.creditosdb).values({
-                    // Usamos los nombres exactos que definiste en tu Select de C#
-                    folioCredito: c.FolioCredito.toString(), 
-                    paquete: c.Paquete || "Paquete General",
-                    fechaPago: c.FechaPago,
-                    fechaExpiracion: c.FechaExpiracion,
-                    estatus: c.Estatus === "Activo" ? 1 : 0,
-                    userId: usuarioId, 
-                    // gymId: gymId // Inclúyelo si lo agregaste a tu esquema de tabla creditosdb
-                });
-            }
-            console.log(`✅ SQLite actualizado: ${creditosApi.length} créditos del gimnasio ${gymId}`);
+        // 3. Limpiar créditos viejos del usuario en la DB local
+        await drizzleDb.delete(schema.creditosdb).where(eq(schema.creditosdb.userId, usuarioId));
+
+        if (creditosApi && creditosApi.length > 0) {
+            // 4. Usamos un mapeo para insertar todo de golpe (más eficiente)
+            const dataToInsert = creditosApi.map((c: any) => ({
+                folioCredito: (c.FolioCredito || c.folio || "").toString(),
+                paquete: c.Paquete || c.paquete || "Paquete General",
+                fechaPago: c.FechaPago || c.fechaPago || "",
+                fechaExpiracion: c.FechaExpiracion || c.fechaVencimiento || "",
+                estatus: (c.Estatus === "Activo" || c.estatus === 1) ? 1 : 0,
+                userId: usuarioId,
+                gymId: gymId // <--- AHORA SÍ GUARDAMOS EL GYM
+            }));
+
+            await drizzleDb.insert(schema.creditosdb).values(dataToInsert);
+            
+            console.log(`✅ Créditos actualizados en SQLite para Gym ${gymId}`);
+        } else {
+            console.warn(`⚠️ No hay créditos para el Gym ${gymId} en el servidor.`);
         }
     } catch (error) {
-        console.error("❌ Error al actualizar créditos en SQLite desde API:", error);
+        console.error("❌ Error al actualizar Créditos localmente:", error);
     }
 };
-
 
 
 // --- 7. ACTUALIZAR CONTRASEÑA --- //
@@ -372,45 +380,45 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
     }
 };
 
-const actualizarGimnasioSeleccionado = async (gymId: number, userId: number, correo: string, password: string) => {
-        try {
-            // 1. Llamada a la API (gestionarSucursalesApi ya maneja el cifrado y el Bearer Token)
-            const responseApi = await gestionarSucursalesApi(correo, password, gymId);
+const actualizarGimnasioSeleccionado = async (gymId: number, userIdViejo: number, correo: string, password: string) => {
+    try {
+        const responseApi = await gestionarSucursalesApi(correo, password, gymId);
 
-            console.log("Respuesta Cambio Gym:", responseApi);
+        if (responseApi.Accion === "CambioExitoso" && responseApi.NuevoToken) {
+            
+            // 1. Obtener el NUEVO ID que el servidor asignó para este local
+            // Si tu API no lo manda en 'responseApi.NuevoUserId', asegúrate de que lo haga.
+            const nuevoUserId = responseApi.Id || responseApi.NuevoUserId; 
 
-            // 2. Validar éxito basado en tu lógica de C#
-            if (responseApi.Accion === "CambioExitoso" && responseApi.NuevoToken) {
-                
-                // 3. Persistencia del nuevo JWT para futuras peticiones a la API
-                await AsyncStorage.setItem('userToken', responseApi.NuevoToken);
+            // 2. ACTUALIZAR TODO EL REGISTRO
+            // No podemos solo hacer update del ID porque es Primary Key. 
+            // Lo más seguro es borrar el viejo e insertar el nuevo.
+            await drizzleDb.delete(schema.usersdb).where(eq(schema.usersdb.id, userIdViejo));
+            await drizzleDb.delete(schema.creditosdb); 
+            await drizzleDb.delete(schema.membresiasdb);
+            console.log("🧹 Memoria local de créditos/membresías limpiada para el nuevo gimnasio");
 
-                // 4. Actualización en la base de datos local SQLite (Drizzle)
-                const filasActualizadas = await drizzleDb.update(schema.usersdb)
-                    .set({
-                        gymId: gymId,
-                        token: responseApi.NuevoToken 
-                    })
-                    .where(eq(schema.usersdb.id, userId))
-                    .returning();
+            const filasNuevas = await drizzleDb.insert(schema.usersdb).values({
+                id: nuevoUserId, // <--- EL NUEVO ID DEL LOCAL 23
+                gymId: gymId,
+                token: responseApi.NuevoToken,
+                correo: correo,
+                contrasena: password,
+                // ... los demás datos que tengas disponibles
+            }).returning();
 
-                // 5. Sincronización del Contexto Global (Estado del Hook)
-                if (filasActualizadas.length > 0) {
-                    setUsers(filasActualizadas[0]);
-                    console.log("✅ Sistema sincronizado: Nuevo Token y Gym ID guardados.");
-                }
-                
-                return responseApi; 
-            } else {
-                throw new Error("El servidor no pudo confirmar el cambio de sucursal.");
+            // 3. Sincronizar el Contexto Global con el NUEVO ID
+            if (filasNuevas.length > 0) {
+                setUsers(filasNuevas[0]);
+                console.log(`✅ Ahora eres el ID ${nuevoUserId} en el Gym ${gymId}`);
             }
-
-        } catch (error: any) {
-            console.error("❌ Error en actualizarGimnasioSeleccionado:", error.message);
-            // Re-lanzamos para que handleCambiarGym en el componente muestre el Alert.alert
-            throw error; 
+            
+            return responseApi; 
         }
-    };
+    } catch (error) {
+        console.error("❌ Error en cambio de local:", error);
+    }
+};
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
     actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword };

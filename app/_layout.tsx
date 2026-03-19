@@ -44,7 +44,8 @@ async function initializeDatabase(db: SQLiteDatabase) {
         fechaInicio TEXT,
         fechaFin TEXT,
         estatus INTEGER,
-        userId INTEGER
+        userId INTEGER,
+        gymId INTEGER
       );
       CREATE TABLE IF NOT EXISTS creditosdb (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +55,8 @@ async function initializeDatabase(db: SQLiteDatabase) {
       fechaPago TEXT,
       fechaExpiracion TEXT,
       estatus INTEGER,
-      userId INTEGER
+      userId INTEGER,
+      gymId INTEGER
     );
     `);
     

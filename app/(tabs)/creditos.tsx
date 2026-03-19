@@ -45,32 +45,50 @@ export default function Creditos() {
         let isMounted = true;
 
         const cargar = async () => {
-            // 1. Buscamos el usuario logueado en SQLite
-            const usuarios = await obtenerUsuarioLocal();
-            const usuarioActual = usuarios[0];
+    // 1. PRIORIDAD: Usar el gymId que tenemos en el estado GLOBAL (Contexto)
+    // Si acabamos de cambiar al 23, 'users.gymId' ya es 23.
+    const currentGymId = users?.gymId;
+    const currentUserId = users?.id;
 
-            if (usuarioActual && isMounted && usuarioActual.gymId !== null) {
-                const gymId = usuarioActual.gymId;
+    if (currentUserId && currentGymId && isMounted) {
+        console.log(`🚀 Sincronizando REAL: Gym ${currentGymId} para Usuario ${currentUserId}`);
 
-                // 2. Sincronizamos Membresías y Créditos con el nuevo gymId
-                await actualizarBaseDatosLocalMembresia(usuarioActual.id, gymId);
-                await actualizarBaseDatosLocalCreditos(usuarioActual.id, gymId);
+        // Limpiamos pantalla para que el usuario vea que algo está pasando
+        setListaMembresias([]);
+        setListaCreditos([]);
 
-                // 3. Obtenemos de SQLite filtrando para la UI
-                const resM = await obtenerMembresiasLocal(usuarioActual.id);
-                const resC = await obtenerCreditosLocal(usuarioActual.id);
+        try {
+            // 2. Ejecutar la sincronización (Estas ya no piden Token, lo sacan solas)
+            await actualizarBaseDatosLocalMembresia(currentUserId, currentGymId);
+            await actualizarBaseDatosLocalCreditos(currentUserId, currentGymId);
 
-                if (isMounted) {
-                    setListaMembresias(resM || []);
-                    setListaCreditos(resC || []);
-                }
+            // 3. Traer de SQLite lo que acabamos de insertar
+            const resM = await obtenerMembresiasLocal(currentUserId);
+            const resC = await obtenerCreditosLocal(currentUserId);
+
+            if (isMounted) {
+                // FILTRO DE SEGURIDAD: Solo mostrar lo que coincida con el Gym actual
+                const finalM = resM.filter((m: any) => m.gymId === currentGymId);
+                const finalC = resC.filter((c: any) => c.gymId === currentGymId);
+
+                setListaMembresias(finalM);
+                setListaCreditos(finalC);
+                console.log(`✅ Visualizando ${finalC.length} créditos del Gym ${currentGymId}`);
             }
-        };
+        } catch (err) {
+            console.error("Error al sincronizar datos:", err);
+        }
+        }
+    };
 
         cargar();
-        return () => { isMounted = false; };
+
+        return () => {
+            isMounted = false;
+        };
         
-    }, [users?.gymId]) // 👈 Agrega users?.gymId aquí para re-reaccionar al cambio
+        // Dependencias: Si users.gymId cambia en el contexto, el efecto se dispara de nuevo
+    }, [users?.gymId, users?.token]) 
 );
 
 

@@ -86,7 +86,9 @@ export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
 export const cerrarSesionUniversal = async () => {
   try {
     // 1. Avisar a tu API de C#
-    const token = await AsyncStorage.getItem('userToken');
+    // IMPORTANTE: Buscamos ambos nombres por si acaso, para asegurar que el C# se entere
+    const token = await AsyncStorage.getItem('token') || await AsyncStorage.getItem('userToken');
+
     if (token) {
       try {
         await fetch(`${BASE_AUTH_URL}/logout`, { 
@@ -94,31 +96,30 @@ export const cerrarSesionUniversal = async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ Token: token })
         });
-        console.log("Notificación de logout enviada a C#");
+        console.log("✅ Notificación de logout enviada a C#");
       } catch (e) {
-        console.log("Servidor C# no disponible, continuando localmente...");
+        console.log("⚠️ Servidor C# no disponible, continuando localmente...");
       }
     }
 
-    // 2. Cierre de Google (Fuerza bruta para asegurar)
+    // 2. Cierre de Google (Fuerza bruta)
     try {
-      // En lugar de preguntar, intentamos cerrar directamente.
-      // Si no hay sesión, simplemente no hará nada.
       await GoogleSignin.signOut();
-      console.log("Comando signOut de Google ejecutado");
+      console.log("✅ Google SignOut ejecutado");
     } catch (googleError) {
-      // Este catch captura si no había sesión, evitando que la app truene
-      console.log("Google ya estaba cerrado o no era necesario");
+      console.log("ℹ️ Google ya estaba cerrado o no era necesario");
     }
 
     // 3. Limpieza Total
+    // Esto borra 'token', 'refreshToken', 'usuarioId' y TODO lo demás.
     await AsyncStorage.clear();
-    console.log("Almacenamiento local limpiado (Token eliminado)");
+    console.log("🧹 Almacenamiento local limpiado por completo");
 
     return true; 
     
   } catch (error) {
-    console.error("Error crítico:", error);
+    console.error("❌ Error crítico en logout:", error);
+    // Por seguridad, intentamos limpiar aunque haya error
     await AsyncStorage.clear();
     return true; 
   }

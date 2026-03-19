@@ -26,6 +26,7 @@ export const membresiasdb = sqliteTable('membresiasdb', {
   fechaFin: text('fechaFin'),
   estatus: integer('estatus'), // SQLite no tiene boolean real, usa 0 o 1
   userId: integer('userId'),
+  gymId: integer('gymId'),
 });
 
 export const creditosdb = sqliteTable('creditosdb', {
@@ -36,4 +37,5 @@ export const creditosdb = sqliteTable('creditosdb', {
   fechaExpiracion: text('fechaExpiracion'),
   estatus: integer('estatus'), // 1: Activo, 0: Agotado/Vencido
   userId: integer('userId'),
+  gymId: integer('gymId'),
 });
