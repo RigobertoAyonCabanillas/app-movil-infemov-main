@@ -150,50 +150,35 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
 };
 
  // --- 4. Función para sincronizar la base de datos local Perfil---
-const sincronizarPerfil = async (userId: number, correo: string, token: string) => {
+const sincronizarPerfil = async (userId: number, correo: string) => {
   try {
-    // 1. Pedir a la API usando el TOKEN (ya no enviamos el userId por seguridad)
-    const datosApi = await obtenerDatosPerfil(token);
-
-    console.log("Perfilxd: ", datosApi);
+    // 1. Pedir a la API (fetchSeguro lo maneja internamente)
+    const datosApi = await obtenerDatosPerfil();
 
     if (!datosApi) throw new Error("No se recibieron datos del servidor");
 
-    // 2. Guardar en SQLite (MAPEANDO MAYÚSCULAS DE .NET A MINÚSCULAS DE TU SCHEMA)
+    // Obtenemos el token "fresco" que quedó en el storage (por si hubo refresh)
+    const tokenFresco = await AsyncStorage.getItem('token');
+
+    // 2. Guardar en SQLite
     const filasActualizadas = await drizzleDb
       .update(schema.usersdb)
       .set({
-        nombres: datosApi.Nombre || "",   // .NET manda 'Nombre'
-        apellidoPaterno: datosApi.ApellidoPaterno || "", 
-        apellidoMaterno: datosApi.ApellidoMaterno || "", 
+        nombres: datosApi.Nombre || "",
+        apellidoPaterno: datosApi.ApellidoPaterno || "",
+        apellidoMaterno: datosApi.ApellidoMaterno || "",
         telefono: datosApi.Telefono || "",
         correo: datosApi.Correo || correo,
-        // Mantener el token actual si el API no manda uno nuevo
-        token: token 
+        token: tokenFresco // 👈 Usamos el token del storage
       })
       .where(eq(schema.usersdb.id, userId))
       .returning();
 
-    // 3. Actualizar el Contexto Global
+    // 3. Actualizar Contexto
     if (filasActualizadas.length > 0) {
       setUsers(filasActualizadas[0]);
-      console.log("✅ SQLite y Contexto sincronizados con datos frescos");
-    } else {
-      // Si por alguna razón no estaba el registro (pasa poco), lo creamos
-      const nuevoRegistro = await drizzleDb.insert(schema.usersdb).values({
-        id: userId,
-        correo: datosApi.Correo || correo,
-        nombres: datosApi.Nombre || "",
-        apellidoPaterno: datosApi.Apellido || "",
-        apellidoMaterno: datosApi.Apellido || "",
-        telefono: datosApi.Telefono || "",
-        contrasena: "********", // No nos llega la contraseña real por seguridad
-        token: token
-      }).returning();
-      
-      setUsers(nuevoRegistro[0]);
     }
-
+    
     return datosApi;
 
   } catch (error) {
@@ -340,42 +325,33 @@ const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => 
 // --- Función para modificar perfil (API + SQLite + Contexto) ---
 const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) => {
     try {
-        // 1. Llamar al Service de API (Cifrado y Comunicación con .NET)
-        // Se envía el token actual para el [Authorize]
-        const resultadoApi = await actualizarPerfilApi(nuevosDatos, users.token); 
+        // 1. Llamar al Service (Ya no le pasamos el token, él lo busca solo)
+        const resultadoApi = await actualizarPerfilApi(nuevosDatos); 
 
-        if (resultadoApi && resultadoApi.Token) {
-            // 2. Actualizar SQLite mapeando de PascalCase (.NET) a camelCase (Drizzle)
-            // Es CRÍTICO guardar el resultadoApi.Token porque el anterior ya no sirve
-            const filasActualizadas = await drizzleDb
-                .update(schema.usersdb)
-                .set({
-                    nombres: nuevosDatos.Nombre || "",
-                    apellidoPaterno: nuevosDatos.ApellidoPaterno || "",
-                    apellidoMaterno: nuevosDatos.ApellidoMaterno || "",
-                    correo: nuevosDatos.Correo || "",
-                    telefono: nuevosDatos.Telefono || "",
-                    token: resultadoApi.Token // El nuevo token que mandó el backend
-                })
-                .where(eq(schema.usersdb.id, userId))
-                .returning(); // Obtenemos el registro actualizado de la BD
+        // 2. Usar el token que devolvió la API (o el que quedó en storage)
+        const tokenFinal = resultadoApi.Token || await AsyncStorage.getItem('token');
 
-            // 3. Actualizar el Contexto Global
-            if (filasActualizadas.length > 0) {
-                setUsers(filasActualizadas[0]); 
-                console.log("✅ Perfil actualizado y Token renovado en SQLite/Contexto");
-            }
+        const filasActualizadas = await drizzleDb
+            .update(schema.usersdb)
+            .set({
+                nombres: nuevosDatos.Nombre || "",
+                apellidoPaterno: nuevosDatos.ApellidoPaterno || "",
+                apellidoMaterno: nuevosDatos.ApellidoMaterno || "",
+                correo: nuevosDatos.Correo || "",
+                telefono: nuevosDatos.Telefono || "",
+                token: tokenFinal // 👈 Token renovado
+            })
+            .where(eq(schema.usersdb.id, userId))
+            .returning();
 
-            return { 
-                success: true, 
-                message: resultadoApi.Message || "Perfil actualizado correctamente" 
-            };
-        } else {
-            throw new Error("La API no devolvió el nuevo token de seguridad.");
+        if (filasActualizadas.length > 0) {
+            setUsers(filasActualizadas[0]); 
+            console.log("✅ Perfil y Token sincronizados");
         }
+
+        return { success: true, message: "Perfil actualizado" };
     } catch (error: any) {
-        console.error("❌ Error en sincronización de actualización:", error);
-        // No recuperamos datos locales aquí porque es una acción de escritura que falló
+        console.error("❌ Error en actualización:", error);
         throw error; 
     }
 };

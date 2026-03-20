@@ -12,6 +12,7 @@ import { useFocusEffect, useNavigation } from 'expo-router';
 import { cerrarSesionUniversal } from '../../services/authgoogle'; 
 import { router } from "expo-router";
 import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function Perfil() {
     const { users, setUsers } = useContext(UserContext);
@@ -55,27 +56,36 @@ export default function Perfil() {
         }); 
     }, [navigation]);
 
-    useFocusEffect(
+useFocusEffect(
     useCallback(() => {
         let isMounted = true;
 
         const cargarDatosUnaVez = async () => {
-            // Usamos los valores actuales del contexto
-            const currentId = users?.Id || users?.id;
-            const currentToken = users?.Token || users?.token;
+            // 1. Ya no necesitamos buscar el token manualmente aquí.
+            // fetchSeguro lo hará por nosotros dentro de la cadena de llamadas.
+            const currentId = users?.id || users?.Id;
 
-            if (isMounted && currentId && currentToken && !loading) {
-                console.log("📡 Sincronización por cambio detectado...");
-                await sincronizarPerfil(currentId, users.Correo || users.correo || "", currentToken);
+            if (isMounted && currentId) {
+                console.log("📡 Sincronizando Perfil para ID:", currentId);
+                try {
+                    // 2. Llamada limpia: solo pasamos ID y Correo.
+                    // El token se gestiona automáticamente de forma interna.
+                    await sincronizarPerfil(currentId, users.correo || users.Correo || "");
+                } catch (err: any) {
+                    // 3. Manejo de errores simplificado. 
+                    // Si llega aquí un "SESION_EXPIRADA", es que el Refresh Token también falló.
+                    if (err.message === "SESION_EXPIRADA") {
+                        console.error("🚨 La sesión ha muerto. Redirigiendo al login...");
+                        // Aquí podrías llamar a tu función de Logout
+                    }
+                }
             }
         };
 
         cargarDatosUnaVez();
 
-        return () => {
-            isMounted = false;
-        };
-    }, [users?.id, users?.gymId, users?.token]) // 👈 AGREGA ESTAS DEPENDENCIAS
+        return () => { isMounted = false; };
+    }, [users?.id, users?.gymId]) // 👈 Quitamos users?.token de aquí porque ya no lo usamos directamente
 );
 
     const handleLogout = async () => {

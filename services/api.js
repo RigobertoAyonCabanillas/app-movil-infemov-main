@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth';
+const API_URL = 'http://192.168.0.137:5254/api/auth';
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -188,39 +188,17 @@ export const enviarDatosLogin = async (correo, contrasena, gymId) => {
 };
 
 // Consulta de información de perfil
-export const obtenerDatosPerfil = async (token) => {
+export const obtenerDatosPerfil = async () => {
   try {
-    // 1. Petición GET limpia. No enviamos body porque el ID sale del Token en .NET
-    const response = await fetch(`${API_URL}/profile`, {
-      method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}` // 👈 Esto es lo que lee el [Authorize]
-      },
-    });
+    // Usamos fetchSeguro en lugar del fetch normal
+    const response = await fetchSeguro('/profile', { method: 'GET' });
 
-    console.log("Header enviado:", token);
+    if (!response.ok) throw new Error(`Error: ${response.status}`);
 
-    if (!response.ok) {
-        console.log("Error Status:", response.status); // 👈 Agrega esto para ver si es 404, 500, etc.
-        if(response.status === 401) throw new Error("Sesión expirada");
-        throw new Error(`Error del servidor: ${response.status}`);
-    }
-
-    // 2. Recibir { Data: "..." }
-    const resultadoDelServidor = await response.json(); 
-    console.log("Sin desencriptar", resultadoDelServidor)
-
-    // 3. Desencriptar la respuesta de SQL Server
-    const dataLimpia = desencriptarDatos(resultadoDelServidor.data);
-    console.log("Con encriptacion",dataLimpia)
-
-
-    console.log("✅ Perfil recuperado de SQL Server:", dataLimpia);
-    return dataLimpia; 
-
+    const resultado = await response.json();
+    return desencriptarDatos(resultado.data || resultado.Data);
   } catch (error) {
-    console.error("❌ Falló el flujo de perfil:", error.message);
+    console.error("❌ Falló el perfil:", error.message);
     throw error;
   }
 };
@@ -266,48 +244,23 @@ export const sincronizarCreditosDesdeApi = async (usuarioId, gymId) => {
 
 // Actualización de Perfil con cifrado AES-ECB
 // En tu archivo de servicios donde esté actualizarPerfilApi
-export const actualizarPerfilApi = async (datos, token) => {
+export const actualizarPerfilApi = async (datos) => {
   try {
     const jsonString = JSON.stringify(datos);
-    const key = CryptoJS.enc.Utf8.parse("k3P9zR7mW2vL5xN8");
-
-    // 1. Cifrado para enviar
+    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
     const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7
-    });
+    }).toString();
 
-    const response = await fetch(`${API_URL}/actualizar-perfil`, {
+    // fetchSeguro se encarga del 401 automáticamente
+    const response = await fetchSeguro('/actualizar-perfil', {
       method: 'PUT',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}` 
-      },
-      body: JSON.stringify({ Data: cifrado.toString() }),
+      body: JSON.stringify({ Data: cifrado }),
     });
 
     const resultadoJson = await response.json();
-
-    // 2. Validación de seguridad para evitar el error de 'ciphertext'
-    // Verificamos que la respuesta sea 200 y que traiga el campo Data o data
-    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
-
-    if (!response.ok || !payloadCifrado) {
-        // Si el servidor mandó un error (ej. 400), probablemente no viene cifrado
-        const mensajeError = resultadoJson.Message || "Error en el servidor";
-        throw new Error(mensajeError);
-    }
-
-    // 3. Llamada a tu función centralizada
-    const datosClaros = desencriptarDatos(payloadCifrado);
-
-    if (!datosClaros) {
-        throw new Error("La respuesta del servidor no tiene un formato válido.");
-    }
-
-    return datosClaros; // Retorna { Message, Token }
-    
+    return desencriptarDatos(resultadoJson.Data || resultadoJson.data);
   } catch (error) {
     console.error("❌ Error en actualización:", error.message);
     throw error;
@@ -460,6 +413,7 @@ export const renovarToken = async () => {
             body: JSON.stringify({ Data: cifrado.toString() })
         });
 
+
         if (!response.ok) throw new Error('Sesión expirada permanentemente');
 
         const result = await response.json();
@@ -477,40 +431,47 @@ export const renovarToken = async () => {
     }
 };
 
-//Para volver a pedir el token refrescado en caso de 401
+//Para volver a pedir el token refrescado en caso de 401 para los servicios
+//Fucion principal ligada a "renovarToken"
 export const fetchSeguro = async (endpoint, opciones = {}) => {
-  // 1. Obtener el token actual del storage
   let token = await AsyncStorage.getItem('token');
 
-  // 2. Configurar los headers
-  const configuracion = {
-    ...opciones,
-    headers: {
-      ...opciones.headers,
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  // 1. Preparamos los headers base
+  const headersBase = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...opciones.headers, // Permitimos que opciones externas sobrescriban si es necesario
   };
 
-  // 3. Primer intento
-  let response = await fetch(`${API_URL}${endpoint}`, configuracion);
+  // 2. Primer intento
+  let response = await fetch(`${API_URL}${endpoint}`, {
+    ...opciones,
+    headers: headersBase,
+  });
 
-  // 4. ¿El token expiró? (401)
+  // 3. ¿El token expiró? (401)
   if (response.status === 401) {
     console.log("🔑 Token expirado. Intentando renovar con RefreshToken...");
-    
-    try {
-      // Intentamos obtener un nuevo Token usando el RefreshToken
-      const nuevoToken = await renovarToken(); 
 
-      // 5. Reintentar la petición original con el token fresquito
-      configuracion.headers['Authorization'] = `Bearer ${nuevoToken}`;
-      response = await fetch(`${API_URL}${endpoint}`, configuracion);
-      
-      console.log("✅ Petición reintentada con éxito tras refresh");
+    try {
+      // 4. Intentamos obtener el nuevo Token
+      const nuevoToken = await renovarToken();
+
+      if (nuevoToken) {
+        // 5. CRÍTICO: Reconstruimos la petición con el NUEVO TOKEN
+        // No reutilizamos el objeto anterior para evitar problemas de referencia
+        response = await fetch(`${API_URL}${endpoint}`, {
+          ...opciones,
+          headers: {
+            ...headersBase,
+            'Authorization': `Bearer ${nuevoToken}`,
+          },
+        });
+
+        console.log("✅ Petición reintentada con éxito tras refresh");
+      }
     } catch (error) {
       console.error("🚨 El RefreshToken también falló. Sesión muerta.");
-      // Aquí podrías emitir un evento para cerrar sesión forzosamente
       throw new Error("SESION_EXPIRADA");
     }
   }
