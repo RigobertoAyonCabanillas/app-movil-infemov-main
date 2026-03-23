@@ -1,496 +1,140 @@
-import { Text, View, Alert, Modal, TouchableOpacity, StyleSheet, ScrollView} from "react-native";
-import React, { useContext, useCallback, useState, useLayoutEffect } from 'react';
-import { 
-    ContainerPerfil, Title, InfoSection, 
-    InfoRow, Label, Value,
-    ModalContainer, ModalContent, InputModal 
-} from "@/styles/perfilStyle";
-import { IconButton, Divider, List, Button, TextInput } from 'react-native-paper';
+import { Text, View, StyleSheet, ScrollView } from "react-native";
+import React, { useContext, useCallback, useLayoutEffect } from 'react';
+import { IconButton } from 'react-native-paper';
 import { UserContext } from "@/components/UserContext";
 import { useAuthService } from "@/servicesdb/authService";
-import { useFocusEffect, useNavigation } from 'expo-router'; 
-import { cerrarSesionUniversal } from '../../services/authgoogle'; 
-import { router } from "expo-router";
-import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect, useNavigation, router } from 'expo-router'; 
+
+
+// Componente de Tarjeta con estilo premium
+const InfoCard = ({ icon, label, value }: { icon: string, label: string, value?: string }) => (
+    <View style={styles.card}>
+        <View style={styles.iconContainer}>
+            <IconButton icon={icon} iconColor="#99bc1a" size={24} />
+        </View>
+        <View style={styles.textContainer}>
+            <Text style={styles.cardLabel}>{label}</Text>
+            <Text style={styles.cardValue}>{value || "No disponible"}</Text>
+        </View>
+    </View>
+);
 
 export default function Perfil() {
-    const { users, setUsers } = useContext(UserContext);
-    // Extraemos la nueva función de sincronización del servicio
-    const { sincronizarPerfil, obtenerUsuarioLocal, actualizarPassword, sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado } = useAuthService();
+    const { users } = useContext(UserContext);
+    const { sincronizarPerfil } = useAuthService();
     const navigation = useNavigation();
-    
-    // Estados de control
-    const [modalVisible, setModalVisible] = useState(false);
-    const [ajustesVisible, setAjustesVisible] = useState(false);
-    const [editModalVisible, setEditModalVisible] = useState(false); // Modal para editar perfil
-    
-    // Estados para cambio de contraseña
-    const [newPassword, setNewPassword] = useState('');
-    const [oldPassword, setOldPassword] = useState(''); 
-    const [loading, setLoading] = useState(false);
 
-    //Selecion de Gimnasios
-    const [gymModalVisible, setGymModalVisible] = useState(false);
-    const [listaGimnasios, setListaGimnasios] = useState<any[]>([]);
-    const [passwordCambio, setPasswordCambio] = useState("");
-    const [gymSeleccionadoId, setGymSeleccionadoId] = useState(null);   
-
-    // Estados para edición de perfil (Cargan datos actuales del contexto)
-    const [nombre, setNombre] = useState('');
-    const [apellidoP, setApellidoP] = useState('');
-    const [apellidoM, setApellidoM] = useState('');
-    const [correo, setCorreo] = useState('');
-    const [telefono, setTelefono] = useState('');
-
+    // Configuración de la cabecera: La tuerca redirige a ajustes
     useLayoutEffect(() => {
         navigation.setOptions({
+            headerTitle: "Mi Perfil",
             headerRight: () => (
                 <IconButton 
-                    icon="cog" 
-                    iconColor="#555" 
-                    size={24} 
-                    onPress={() => setAjustesVisible(true)} 
+                    icon="cog-outline" 
+                    iconColor="#333" 
+                    size={26} 
+                    onPress={() => router.push('/(settings)/ajustes')} // Redirección directa
                 />
             ),
         }); 
     }, [navigation]);
 
-useFocusEffect(
-    useCallback(() => {
-        let isMounted = true;
-
-        const cargarDatosUnaVez = async () => {
-            // 1. Ya no necesitamos buscar el token manualmente aquí.
-            // fetchSeguro lo hará por nosotros dentro de la cadena de llamadas.
+    // Sincronización de datos al enfocar la pantalla
+    useFocusEffect(
+        useCallback(() => {
             const currentId = users?.id || users?.Id;
+            const currentCorreo = users?.correo || users?.Correo;
+            
+            // Si el ID es el del gimnasio viejo o está vacío, no sincronices
+            if (currentId && currentCorreo) {
+                // Agregamos un pequeño delay opcional para dejar que el Contexto respire
+                const timeout = setTimeout(() => {
+                    console.log("🚀 Sincronizando Perfil con ID:", currentId);
+                    sincronizarPerfil(currentId, currentCorreo).catch(console.error);
+                }, 500); 
 
-            if (isMounted && currentId) {
-                console.log("📡 Sincronizando Perfil para ID:", currentId);
-                try {
-                    // 2. Llamada limpia: solo pasamos ID y Correo.
-                    // El token se gestiona automáticamente de forma interna.
-                    await sincronizarPerfil(currentId, users.correo || users.Correo || "");
-                } catch (err: any) {
-                    // 3. Manejo de errores simplificado. 
-                    // Si llega aquí un "SESION_EXPIRADA", es que el Refresh Token también falló.
-                    if (err.message === "SESION_EXPIRADA") {
-                        console.error("🚨 La sesión ha muerto. Redirigiendo al login...");
-                        // Aquí podrías llamar a tu función de Logout
-                    }
-                }
+                return () => clearTimeout(timeout);
             }
-        };
-
-        cargarDatosUnaVez();
-
-        return () => { isMounted = false; };
-    }, [users?.id, users?.gymId]) // 👈 Quitamos users?.token de aquí porque ya no lo usamos directamente
-);
-
-    const handleLogout = async () => {
-        setAjustesVisible(false);
-        try {
-            await cerrarSesionUniversal();
-            setUsers(null); 
-            router.replace("/");
-        } catch (error) {
-            setUsers(null);
-            router.replace("/");
-        }
-    };
-
-    // --- FUNCIÓN PARA GUARDAR CAMBIOS DE PERFIL ---
-    const handleGuardarPerfil = async () => {
-        if (!nombre || !correo) {
-            Alert.alert("Campos requeridos", "Nombre y Correo son obligatorios.");
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const nuevosDatos = {
-                Nombre: nombre,
-                ApellidoPaterno: apellidoP,
-                ApellidoMaterno: apellidoM,
-                Correo: correo,
-                Telefono: telefono
-            };
-
-            // Llamada al servicio que coordina API (.NET) + SQLite + Contexto
-            const res = await sincronizarActualizacionPerfil(users.id, nuevosDatos);
-
-            if (res.success) {
-                Alert.alert("Éxito", res.message);
-                setEditModalVisible(false);
-            }
-        } catch (error: any) {
-            Alert.alert("Error", error.message || "No se pudo actualizar el perfil.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    //Cambio Contraseña
-    const handleConfirmarCambio = async () => {
-    if (!oldPassword || !newPassword) {
-        Alert.alert("Campos requeridos", "Por favor llena ambos campos.");
-        return;
-    }
-    setLoading(true);
-    try {
-        // Llamada a la API con cifrado
-        const res = await actualizarPasswordApi(oldPassword, newPassword, users.token);
-
-        if (res) {
-            Alert.alert(
-                "Seguridad Actualizada", 
-                "Tu contraseña ha sido cambiada. Por seguridad, debes iniciar sesión de nuevo.",
-                [{ text: "OK", onPress: () => handleLogout() }] // Forzamos el logout
-            );
-            setModalVisible(false);
-            setOldPassword('');
-            setNewPassword('');
-        }
-    } catch (error: any) {
-        // Aquí se mostrarán errores como "La contraseña actual es incorrecta" o requisitos de seguridad
-        Alert.alert("Error de Seguridad", error.message);
-    } finally {
-        setLoading(false);
-    }
-    };
-
-    // --- FUNCIONES DE GIMNASIO ACTUALIZADAS ---
-const handleAbrirConfigGym = async () => {
-    setLoading(true);
-    try {
-        // Obtenemos el correo del contexto de usuario
-        const correo = users?.correo || users?.Correo;
-        
-        // Llamamos a la API. Al no pasar password ni ID, el C# entrará al "Caso B" (Lista)
-        const res = await gestionarSucursalesApi(correo);
-        
-        console.log("Respuesta lista gimnasios:", res);
-
-        if (res.Accion === "MostrarLista" && res.Gimnasios) {
-            if (res.Gimnasios.length > 0) {
-                setListaGimnasios(res.Gimnasios);
-                setGymModalVisible(true);
-            } else {
-                Alert.alert("Aviso", "No se encontraron otras sucursales vinculadas.");
-            }
-        }
-    } catch (error: any) {
-        console.error("DEBUG GYM ERROR:", error);
-        // Si el error es 401, el mensaje dirá "Sesión expirada" gracias a la validación en api.js
-        Alert.alert("Error", error.message || "No se pudo cargar la lista de sucursales.");
-    } finally {
-        setLoading(false);
-    }
-};
-
-const handleCambiarGym = async (gymId: number, password: string) => {
-    if (!password) {
-        Alert.alert("Error", "Debes ingresar la contraseña para cambiar de sucursal.");
-        return;
-    }
-
-    setLoading(true);
-    try {
-        const correoUsuario = users?.correo || users?.Correo;
-        const userId = users?.id || users?.Id;
-
-        // 1. Llamamos a la función que orquesta el cambio (API -> SQLite -> Contexto)
-        // Es vital que 'actualizarGimnasioSeleccionado' reciba estos 4 parámetros
-        await actualizarGimnasioSeleccionado(gymId, userId, correoUsuario, password);
-
-        Alert.alert("Éxito", "Cambiando a la sucursal seleccionada...");
-        setGymModalVisible(false);
-        
-        // 2. Redirigir al Home para refrescar todos los datos con el nuevo Token/GymId
-        router.replace("/(tabs)/home");
-    } catch (error: any) {
-        console.error("Error al cambiar gym:", error);
-        Alert.alert("Error de Validación", error.message || "Contraseña incorrecta o error de conexión.");
-    } finally {
-        setLoading(false);
-    }
-};
+        }, [users?.id, users?.gymId]) // Escucha cambios específicos
+    );
 
     return (
-        <ContainerPerfil>
-            <Title style={{ marginTop: 20 }}>Perfil Usuario</Title>
+        <ScrollView style={styles.mainContainer} showsVerticalScrollIndicator={false}>
+            <View style={styles.headerSection}>
+                <Text style={styles.mainTitle}>Perfil Usuario</Text>
+                <Text style={styles.subTitle}>Gestiona tu información personal</Text>
+            </View>
 
-            <InfoSection>
-                <InfoRow><Label>Nombre</Label><Value>{users?.nombres || "Cargando..."}</Value></InfoRow>
-                <InfoRow><Label>Apellido Paterno</Label><Value>{users?.apellidoPaterno || "Cargando..."}</Value></InfoRow>
-                <InfoRow><Label>Apellido Materno</Label><Value>{users?.apellidoMaterno || "Cargando..."}</Value></InfoRow>
-                <InfoRow><Label>Correo</Label><Value>{users?.correo}</Value></InfoRow>
-                <InfoRow><Label>Teléfono</Label><Value>{users?.telefono}</Value></InfoRow>
-            </InfoSection>
-
-            {/* --- MODAL DE CONFIGURACIÓN PRINCIPAL --- */}
-            <Modal animationType="slide" transparent={true} visible={ajustesVisible} onRequestClose={() => setAjustesVisible(false)}>
-                <View style={styles.ajustesContainer}>
-                    <View style={styles.ajustesHeader}>
-                        <IconButton icon="arrow-left" size={26} onPress={() => setAjustesVisible(false)} />
-                        <Text style={styles.ajustesTitle}>Configuración</Text>
-                    </View>
-
-                    <View style={styles.optionsList}>
-                        <List.Item
-                            title="Modificar Información"
-                            description="Cambia tus datos personales"
-                            left={props => <List.Icon {...props} icon="account-edit-outline" />}
-                            onPress={() => {
-                                // Cargamos los datos actuales antes de abrir el modal de edición
-                                setNombre(users?.nombres || "");
-                                setApellidoP(users?.apellidoPaterno || "");
-                                setApellidoM(users?.apellidoMaterno || "");
-                                setCorreo(users?.correo || "");
-                                setTelefono(users?.telefono || "");
-                                setEditModalVisible(true);
-                            }}
-                        />
-                        <Divider />
-                        <List.Item
-                            title="Seguridad"
-                            description="Cambiar contraseña"
-                            left={props => <List.Icon {...props} icon="lock-outline" />}
-                            onPress={() => setModalVisible(true)}
-                        />
-                        <Divider />
-                        <List.Item
-                            title="Mi Gimnasio"
-                            description="Cambia tu gimnasio de entrenamiento"
-                            left={props => <List.Icon {...props} icon="dumbbell" />}
-                            // Cambia setGymModalVisible(true) por handleAbrirConfigGym
-                            onPress={handleAbrirConfigGym} 
-                        />
-                        <Divider />
-                        <List.Item
-                            title="Cerrar Sesión"
-                            titleStyle={{ color: 'red', fontWeight: 'bold' }}
-                            left={props => <List.Icon {...props} icon="logout" color="red" />}
-                            onPress={handleLogout}
-                        />
-                    </View>
-                </View>
-            </Modal>
-
-            {/* --- MODAL PARA EDITAR PERFIL --- */}
-            <Modal animationType="slide" transparent={true} visible={editModalVisible}>
-                <ModalContainer>
-                    <ModalContent style={{ width: '90%', maxHeight: '85%' }}>
-                        <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-                            <Title style={{ fontSize: 20, marginBottom: 15 }}>Editar Perfil</Title>
-                            
-                            <Label style={{ marginBottom: 5, fontSize: 14 }}>Nombre</Label>
-                            <InputModal placeholder="Nombre" value={nombre} onChangeText={setNombre} />
-                            
-                            <Label style={{ marginBottom: 5, fontSize: 14 }}>Apellido Paterno</Label>
-                            <InputModal placeholder="Apellido Paterno" value={apellidoP} onChangeText={setApellidoP} />
-                            
-                            <Label style={{ marginBottom: 5, fontSize: 14 }}>Apellido Materno</Label>
-                            <InputModal placeholder="Apellido Materno" value={apellidoM} onChangeText={setApellidoM} />
-                            
-                            <Label style={{ marginBottom: 5, fontSize: 14 }}>Teléfono</Label>
-                            <InputModal placeholder="Teléfono" value={telefono} onChangeText={setTelefono} keyboardType="phone-pad" />
-                            
-                            <Label style={{ marginBottom: 5, fontSize: 14 }}>Correo Electrónico</Label>
-                            <InputModal placeholder="Correo" value={correo} onChangeText={setCorreo} keyboardType="email-address" autoCapitalize="none" />
-
-                            <View style={{ flexDirection: 'row', marginTop: 20, justifyContent: 'space-around', marginBottom: 10 }}>
-                                <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                                    <Text style={{ color: 'red', fontWeight: 'bold' }}>CANCELAR</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={handleGuardarPerfil} disabled={loading}>
-                                    <Text style={{ color: loading ? '#ccc' : '#9815d0', fontWeight: 'bold' }}>
-                                        {loading ? "GUARDANDO..." : "GUARDAR"}
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </ScrollView>
-                    </ModalContent>
-                </ModalContainer>
-            </Modal>
-
-            {/* --- MODAL DE CAMBIO DE CONTRASEÑA --- */}
-            <Modal animationType="fade" transparent={true} visible={modalVisible}>
-                <ModalContainer>
-                    <ModalContent>
-                        <Title style={{ fontSize: 20, marginBottom: 15 }}>Nueva Seguridad</Title>
-                        <InputModal placeholder="Contraseña Actual" secureTextEntry value={oldPassword} onChangeText={setOldPassword} />
-                        <InputModal placeholder="Nueva Contraseña" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
-                        <View style={{ flexDirection: 'row', marginTop: 20 }}>
-                            <TouchableOpacity onPress={() => setModalVisible(false)} style={{ marginRight: 30 }}>
-                                <Text style={{ color: 'red', fontWeight: 'bold' }}>CANCELAR</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={handleConfirmarCambio} disabled={loading}>
-                                <Text style={{ color: loading ? '#ccc' : '#9815d0', fontWeight: 'bold' }}>
-                                    {loading ? "PROCESANDO..." : "CONFIRMAR"}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                    </ModalContent>
-                </ModalContainer>
-            </Modal>
-
-            {/* --- MODAL PARA CAMBIAR GIMNASIO --- */}
-             <Modal
-                    visible={gymModalVisible}
-                    transparent={true}
-                    animationType="slide"
-                    onRequestClose={() => {
-                        setGymModalVisible(false);
-                        setGymSeleccionadoId(null);
-                        setPasswordCambio("");
-                    }}
-                >
-                    <View style={styles.modalContainer}>
-                        <View style={styles.modalContent}>
-                            <Text style={styles.modalTitle}>Selecciona una Sucursal</Text>
-
-                            <ScrollView style={{ width: '100%', maxHeight: 300 }}>
-                                {listaGimnasios && listaGimnasios.length > 0 ? (
-                                    listaGimnasios.map((gym) => (
-                                        <TouchableOpacity
-                                            key={gym.Id} // Usamos Id (Mayúscula) como viene del C#
-                                            style={[
-                                                styles.gymItem, 
-                                                gymSeleccionadoId === gym.Id && { borderColor: '#9815d0', borderWidth: 2, backgroundColor: '#f3e5f5' }
-                                            ]}
-                                            onPress={() => setGymSeleccionadoId(gym.Id)}
-                                        >
-                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <Text style={[
-                                                    styles.gymText,
-                                                    gymSeleccionadoId === gym.Id && { fontWeight: 'bold', color: '#9815d0' }
-                                                ]}>
-                                                    {gym.Nombre}
-                                                </Text>
-                                                
-                                                {/* Marcamos el gimnasio en el que el usuario está actualmente logueado */}
-                                                {(users?.gymId === gym.Id || users?.SuperUsuarioId === gym.Id) && (
-                                                    <List.Icon icon="check-circle" color="#9815d0" />
-                                                )}
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))
-                                ) : (
-                                    <Text style={{ textAlign: 'center', marginVertical: 20, color: '#666' }}>
-                                        No se encontraron sucursales vinculadas.
-                                    </Text>
-                                )}
-                            </ScrollView>
-
-                            {/* --- SECCIÓN DE CONTRASEÑA --- */}
-                            {/* Solo se muestra si hay un gym seleccionado y no es el actual */}
-                            {gymSeleccionadoId && gymSeleccionadoId !== (users?.gymId || users?.SuperUsuarioId) && (
-                                <View style={{ width: '100%', marginTop: 15, paddingHorizontal: 5 }}>
-                                    <Divider style={{ marginBottom: 15 }} />
-                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 5 }}>
-                                        Ingresa la contraseña para esta sucursal:
-                                    </Text>
-                                    <TextInput
-                                        label="Contraseña"
-                                        value={passwordCambio}
-                                        onChangeText={setPasswordCambio}
-                                        secureTextEntry
-                                        autoFocus={true} // Para que el teclado abra rápido
-                                        mode="outlined"
-                                        outlineColor="#9815d0"
-                                        activeOutlineColor="#9815d0"
-                                        style={{ marginBottom: 10, backgroundColor: '#fff' }}
-                                    />
-                                    <Button 
-                                        mode="contained" 
-                                        onPress={() => handleCambiarGym(gymSeleccionadoId, passwordCambio)}
-                                        loading={loading}
-                                        disabled={!passwordCambio || loading}
-                                        buttonColor="#9815d0"
-                                        style={{ borderRadius: 8 }}
-                                    >
-                                        Confirmar y Entrar
-                                    </Button>
-                                </View>
-                            )}
-
-                            <Button 
-                                mode="text" 
-                                onPress={() => {
-                                    setGymModalVisible(false);
-                                    setGymSeleccionadoId(null);
-                                    setPasswordCambio("");
-                                }} 
-                                textColor="#666"
-                                style={{ marginTop: 10 }}
-                            >
-                                Cancelar
-                            </Button>
-                        </View>
-                    </View>
-                </Modal>
-           
-        </ContainerPerfil>
+            <View style={styles.cardsContainer}>
+                <InfoCard icon="account-outline" label="Nombre" value={users?.nombres} />
+                <InfoCard icon="account-details-outline" label="Apellido Paterno" value={users?.apellidoPaterno} />
+                <InfoCard icon="account-details-outline" label="Apellido Materno" value={users?.apellidoMaterno} />
+                <InfoCard icon="email-outline" label="Correo" value={users?.correo} />
+                <InfoCard icon="phone-outline" label="Teléfono" value={users?.telefono} />
+            </View>
+        </ScrollView>
     );
 }
 
 const styles = StyleSheet.create({
-    ajustesContainer: { 
-        flex: 1, 
-        backgroundColor: '#FFFFFF', 
+    mainContainer: {
+        flex: 1,
+        backgroundColor: '#FBFBFE',
     },
-    ajustesHeader: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        paddingTop: 50, 
-        paddingBottom: 15,
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#ECECEC',
+    headerSection: {
+        marginTop: 30,
+        marginBottom: 30,
+        paddingHorizontal: 25,
     },
-    ajustesTitle: { fontSize: 22, fontWeight: '600', marginLeft: 5 },
-    optionsList: { marginTop: 10 },
-    gymItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    },
-    gymText: {
-        fontSize: 16,
-        color: '#333',
-    },
-    modalTitle: {
-        fontSize: 20,
+    mainTitle: {
+        fontSize: 42,
+        color: '#99bc1a',
         fontWeight: 'bold',
-        marginBottom: 15,
-        textAlign: 'center',
+        letterSpacing: -1,
     },
-    modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)', // Fondo semi-transparente
-  },
-  modalContent: {
-    width: '85%',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  closeButton: { // 👈 Agrega este para quitar el error de image_59314d.png
-        marginTop: 20,
-        backgroundColor: '#9815d0',
-        width: '100%',
+    subTitle: {
+        fontSize: 16,
+        color: '#888',
+        marginTop: -5,
+    },
+    cardsContainer: {
+        paddingHorizontal: 20,
+        gap: 5, // Mejora la separación entre tarjetas
+    },
+    card: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 20,
+        paddingVertical: 12,
+        paddingHorizontal: 15,
+        marginBottom: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+    },
+    iconContainer: {
+        backgroundColor: '#F5F9E5',
+        borderRadius: 12,
+        marginRight: 15,
+    },
+    textContainer: {
+        flex: 1,
+    },
+    cardLabel: {
+        fontSize: 12,
+        color: '#AAA',
+        textTransform: 'uppercase',
+        fontWeight: 'bold',
+        marginBottom: 2,
+    },
+    cardValue: {
+        fontSize: 17,
+        color: '#333',
+        fontWeight: '600',
     },
 });

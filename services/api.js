@@ -1,7 +1,9 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.0.137:5254/api/auth';
+const API_URL = 'http://100.116.49.102:5254/api/auth';
+const API_URL2 = 'http://100.116.49.102:5254/api';
+
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
 const SECRET_KEY = "k3P9zR7mW2vL5xN8"; 
@@ -188,10 +190,13 @@ export const enviarDatosLogin = async (correo, contrasena, gymId) => {
 };
 
 // Consulta de información de perfil
-export const obtenerDatosPerfil = async () => {
+export const obtenerDatosPerfil = async (tokenForzado) => {
   try {
-    // Usamos fetchSeguro en lugar del fetch normal
-    const response = await fetchSeguro('/profile', { method: 'GET' });
+    // Si pasamos tokenForzado, fetchSeguro lo usará en lugar del de Julian
+    const response = await fetchSeguro('/profile', { 
+      method: 'GET',
+      headers: tokenForzado ? { 'Authorization': `Bearer ${tokenForzado}` } : {} 
+    });
 
     if (!response.ok) throw new Error(`Error: ${response.status}`);
 
@@ -434,13 +439,16 @@ export const renovarToken = async () => {
 //Para volver a pedir el token refrescado en caso de 401 para los servicios
 //Fucion principal ligada a "renovarToken"
 export const fetchSeguro = async (endpoint, opciones = {}) => {
-  let token = await AsyncStorage.getItem('token');
+  // 1. Extraer el token de los headers de opciones si existe (token forzado)
+  // Si no viene en opciones.headers, entonces lo buscamos en AsyncStorage
+  let token = opciones.headers?.['Authorization']?.replace('Bearer ', '') 
+              || await AsyncStorage.getItem('token');
 
-  // 1. Preparamos los headers base
+  // 2. Preparamos los headers base
   const headersBase = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`,
-    ...opciones.headers, // Permitimos que opciones externas sobrescriban si es necesario
+    ...opciones.headers, // Esto permite que el token forzado gane la partida
   };
 
   // 2. Primer intento
@@ -477,4 +485,100 @@ export const fetchSeguro = async (endpoint, opciones = {}) => {
   }
 
   return response;
+};
+
+//Echo para evitar escalado del modelo Auth en C# endpoints
+export const fetchSeguro2 = async (endpoint, opciones = {}) => {
+  // 1. Extraer el token de los headers de opciones si existe (token forzado)
+  // Si no viene en opciones.headers, entonces lo buscamos en AsyncStorage
+  let token = opciones.headers?.['Authorization']?.replace('Bearer ', '') 
+              || await AsyncStorage.getItem('token');
+
+  // 2. Preparamos los headers base
+  const headersBase = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...opciones.headers, // Esto permite que el token forzado gane la partida
+  };
+
+  // 2. Primer intento
+  let response = await fetch(`${API_URL2}${endpoint}`, {
+    ...opciones,
+    headers: headersBase,
+  });
+
+  // 3. ¿El token expiró? (401)
+  if (response.status === 401) {
+    console.log("🔑 Token expirado. Intentando renovar con RefreshToken...");
+
+    try {
+      // 4. Intentamos obtener el nuevo Token
+      const nuevoToken = await renovarToken();
+
+      if (nuevoToken) {
+        // 5. CRÍTICO: Reconstruimos la petición con el NUEVO TOKEN
+        // No reutilizamos el objeto anterior para evitar problemas de referencia
+        response = await fetch(`${API_URL2}${endpoint}`, {
+          ...opciones,
+          headers: {
+            ...headersBase,
+            'Authorization': `Bearer ${nuevoToken}`,
+          },
+        });
+
+        console.log("✅ Petición reintentada con éxito tras refresh");
+      }
+    } catch (error) {
+      console.error("🚨 El RefreshToken también falló. Sesión muerta.");
+      throw new Error("SESION_EXPIRADA");
+    }
+  }
+
+  return response;
+};
+
+//Sugerencias-Comentarios
+// Enviar Sugerencia con Comentario y Calificación
+export const enviarSugerenciaApi = async (comentario, calificacion) => {
+  try {
+    // 1. Incluimos la Calificación en el objeto antes de cifrar
+    const datos = {
+      Comentario: comentario,
+      Calificacion: calificacion, // Se envía como número (1-5)
+      Fecha: new Date().toISOString()
+    };
+
+    const jsonString = JSON.stringify(datos);
+    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
+
+    // 2. Cifrado AES-ECB
+    const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
+    }).toString();
+
+    // 3. Petición POST (Asegúrate de que la ruta coincida con tu Controller)
+    const response = await fetchSeguro2('/sugerencias', { 
+      method: 'POST',
+      body: JSON.stringify({ Data: cifrado }),
+    });
+
+    // 4. Verificamos si la respuesta es exitosa
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error del servidor (${response.status}): ${errorText}`);
+    }
+
+    const resultadoJson = await response.json();
+    
+    // 5. Desencriptar la respuesta del servidor
+    if (resultadoJson && (resultadoJson.Data || resultadoJson.data)) {
+        return desencriptarDatos(resultadoJson.Data || resultadoJson.data);
+    }
+    
+    return resultadoJson;
+  } catch (error) {
+    console.error("❌ Error enviando sugerencia:", error.message);
+    throw error;
+  }
 };

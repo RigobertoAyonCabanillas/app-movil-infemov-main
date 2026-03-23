@@ -2,7 +2,7 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, gestionarSucursalesApi, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
+import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
@@ -150,17 +150,19 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
 };
 
  // --- 4. Función para sincronizar la base de datos local Perfil---
-const sincronizarPerfil = async (userId: number, correo: string) => {
+const sincronizarPerfil = async (userId: number, correo: string, tokenForzado?: string) => {
   try {
-    // 1. Pedir a la API (fetchSeguro lo maneja internamente)
-    const datosApi = await obtenerDatosPerfil();
+    // 1. Pedir a la API 
+    // PASAMOS el token forzado si existe, para que la API sepa quién es el nuevo usuario
+    const datosApi = await obtenerDatosPerfil(tokenForzado); 
 
     if (!datosApi) throw new Error("No se recibieron datos del servidor");
 
-    // Obtenemos el token "fresco" que quedó en el storage (por si hubo refresh)
-    const tokenFresco = await AsyncStorage.getItem('token');
+    // 2. Determinar qué token guardar en SQLite
+    // Si venimos de un cambio de gym, usamos el forzado. Si no, el del storage.
+    const tokenAFuardar = tokenForzado || await AsyncStorage.getItem('token');
 
-    // 2. Guardar en SQLite
+    // 3. Guardar en SQLite
     const filasActualizadas = await drizzleDb
       .update(schema.usersdb)
       .set({
@@ -169,14 +171,18 @@ const sincronizarPerfil = async (userId: number, correo: string) => {
         apellidoMaterno: datosApi.ApellidoMaterno || "",
         telefono: datosApi.Telefono || "",
         correo: datosApi.Correo || correo,
-        token: tokenFresco // 👈 Usamos el token del storage
+        token: tokenAFuardar 
       })
       .where(eq(schema.usersdb.id, userId))
       .returning();
 
-    // 3. Actualizar Contexto
+    // 4. Actualizar Contexto
     if (filasActualizadas.length > 0) {
-      setUsers(filasActualizadas[0]);
+        // Asegúrate de que el ID sea Number para evitar desajustes en el context
+        setUsers({
+            ...filasActualizadas[0],
+            id: Number(filasActualizadas[0].id)
+        });
     }
     
     return datosApi;
@@ -358,45 +364,90 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
 
 const actualizarGimnasioSeleccionado = async (gymId: number, userIdViejo: number, correo: string, password: string) => {
     try {
+        // 1. Limpiamos el contexto para evitar renderizados con datos viejos
+        setUsers(null); 
+
         const responseApi = await gestionarSucursalesApi(correo, password, gymId);
 
         if (responseApi.Accion === "CambioExitoso" && responseApi.NuevoToken) {
-            
-            // 1. Obtener el NUEVO ID que el servidor asignó para este local
-            // Si tu API no lo manda en 'responseApi.NuevoUserId', asegúrate de que lo haga.
             const nuevoUserId = responseApi.Id || responseApi.NuevoUserId; 
+            const nuevoToken = responseApi.NuevoToken;
 
-            // 2. ACTUALIZAR TODO EL REGISTRO
-            // No podemos solo hacer update del ID porque es Primary Key. 
-            // Lo más seguro es borrar el viejo e insertar el nuevo.
+            // --- PASO CRÍTICO: Actualizar el disco antes que nada ---
+            await AsyncStorage.setItem('token', nuevoToken);
+            if (responseApi.RefreshToken) {
+                await AsyncStorage.setItem('refreshToken', responseApi.RefreshToken);
+            }
+
+            // 2. Limpieza de base de datos local
+            // Usamos una transacción o borramos en orden
             await drizzleDb.delete(schema.usersdb).where(eq(schema.usersdb.id, userIdViejo));
             await drizzleDb.delete(schema.creditosdb); 
             await drizzleDb.delete(schema.membresiasdb);
-            console.log("🧹 Memoria local de créditos/membresías limpiada para el nuevo gimnasio");
 
+            // 3. Inserción con los datos frescos de la respuesta
             const filasNuevas = await drizzleDb.insert(schema.usersdb).values({
-                id: nuevoUserId, // <--- EL NUEVO ID DEL LOCAL 23
+                id: nuevoUserId,
                 gymId: gymId,
-                token: responseApi.NuevoToken,
+                token: nuevoToken,
                 correo: correo,
                 contrasena: password,
-                // ... los demás datos que tengas disponibles
+                // Usamos lo que la API ya nos dio para no mostrar campos vacíos
+                nombres: responseApi.Nombre || "Cargando...", 
+                apellidoPaterno: responseApi.ApellidoPaterno || "",
+                apellidoMaterno: responseApi.ApellidoMaterno || "",
+                telefono: responseApi.Telefono || ""
             }).returning();
 
-            // 3. Sincronizar el Contexto Global con el NUEVO ID
             if (filasNuevas.length > 0) {
-                setUsers(filasNuevas[0]);
-                console.log(`✅ Ahora eres el ID ${nuevoUserId} en el Gym ${gymId}`);
+                const usuarioParaContexto = {
+                    ...filasNuevas[0],
+                    id: Number(filasNuevas[0].id)
+                };
+                
+                // 4. Actualizamos el estado global
+                setUsers(usuarioParaContexto);
+                
+                console.log(`✅ Identidad cambiada: Ahora eres ID ${nuevoUserId}`);
+
+                // 5. Sincronización final de perfil
+                // Pasamos el nuevoToken explícitamente por si el Storage tarda milisegundos
+                await sincronizarPerfil(Number(nuevoUserId), correo, nuevoToken);
+                
+                console.log("✅ Perfil sincronizado con el servidor exitosamente.");
             }
             
             return responseApi; 
         }
     } catch (error) {
-        console.error("❌ Error en cambio de local:", error);
+        console.error("❌ Error en el proceso de cambio de gimnasio:", error);
+        throw error;
+    }
+  };
+
+const enviarSugerenciaService = async (comentario: string, calificacion: number) => {
+    try {
+        // Validamos que existan ambos datos
+        if (!comentario || comentario.trim().length < 5) {
+            throw new Error("El comentario es demasiado corto.");
+        }
+        
+        if (calificacion < 1 || calificacion > 5) {
+            throw new Error("La calificación debe estar entre 1 y 5.");
+        }
+
+        // Ahora enviamos comentario Y calificación a la API
+        const respuesta = await enviarSugerenciaApi(comentario, calificacion);
+
+        // Retornamos la respuesta descifrada
+        return respuesta;
+    } catch (error: any) {
+        console.error("❌ Error en SugerenciaService:", error.message);
+        throw error;
     }
 };
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
-    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword };
+    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService };
 }
 
