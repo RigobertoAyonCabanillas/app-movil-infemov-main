@@ -1,4 +1,3 @@
-import { boolean } from 'drizzle-orm/gel-core';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
 //Se crea el schema de la tabla de registro

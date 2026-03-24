@@ -16,6 +16,13 @@ export default function TabLayout() {
         }}
       />
 
+      <Tabs.Screen
+        name="reservaciones"
+        options={{
+          title: 'Reservaciones',
+          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
+        }}
+      />
 
       <Tabs.Screen
         name="creditos"

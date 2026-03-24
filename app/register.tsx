@@ -165,10 +165,8 @@ const { registrarUsuarioProceso } = useAuthService();
       contentContainerStyle={{ flexGrow: 1, paddingBottom: 50 }}
       showsVerticalScrollIndicator={false}
     >
-      <Container> 
-
-          /* --- VISTA B: FORMULARIO COMPLETO --- */
-          <>
+      <Container>          
+            <>
             <Title>Registrarse</Title>
             
             <FieldGroup>
@@ -191,7 +189,10 @@ const { registrarUsuarioProceso } = useAuthService();
 
             <FieldGroup>
               <Fields>Apellido Materno</Fields>
-              <TextInputEntrada onChangeText={setLastNameM} placeholder="Apellido Materno" />
+              <TextInputEntrada 
+              keyboardType="default"
+              autoCorrect={false}
+              onChangeText={setLastNameM} placeholder="Apellido Materno" />
             </FieldGroup>
 
             <FieldGroup>
