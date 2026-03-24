@@ -362,7 +362,7 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
     }
 };
 
-const actualizarGimnasioSeleccionado = async (gymId: number, userIdViejo: number, correo: string, password: string) => {
+const actualizarGimnasioSeleccionado = async (gymId: any, userIdViejo: number, correo: string, password: string) => {
     try {
         // 1. Limpiamos el contexto para evitar renderizados con datos viejos
         setUsers(null); 
@@ -425,7 +425,7 @@ const actualizarGimnasioSeleccionado = async (gymId: number, userIdViejo: number
     }
   };
 
-const enviarSugerenciaService = async (comentario: string, calificacion: number) => {
+const enviarSugerenciaService = async (comentario: string, calificacion: number, gymId: number | string) => {
     try {
         // Validamos que existan ambos datos
         if (!comentario || comentario.trim().length < 5) {
@@ -436,8 +436,8 @@ const enviarSugerenciaService = async (comentario: string, calificacion: number)
             throw new Error("La calificación debe estar entre 1 y 5.");
         }
 
-        // Ahora enviamos comentario Y calificación a la API
-        const respuesta = await enviarSugerenciaApi(comentario, calificacion);
+        // Enviamos los tres datos a la API
+        const respuesta = await enviarSugerenciaApi(comentario, calificacion, gymId);
 
         // Retornamos la respuesta descifrada
         return respuesta;

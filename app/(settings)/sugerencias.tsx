@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, TextInput, Button, Surface, HelperText, IconButton } from 'react-native-paper';
 import { useAuthService } from "@/servicesdb/authService";
 import { useRouter } from 'expo-router';
+import { UserContext } from '@/components/UserContext';
 
 export default function SugerenciasScreen() {
+
+    const { users } = useContext(UserContext);
+    
     const { enviarSugerenciaService } = useAuthService();
     const router = useRouter();
     
@@ -14,25 +18,27 @@ export default function SugerenciasScreen() {
     const MAX_CHARS = 500;
 
     const handleEnviar = async () => {
-        if (comentario.trim().length < 5) {
-            Alert.alert("Aviso", "Por favor, escribe una sugerencia un poco más detallada (mínimo 5 caracteres).");
-            return;
-        }
+    if (comentario.trim().length < 5) {
+        Alert.alert("Aviso", "Por favor, escribe una sugerencia detallada.");
+        return;
+    }
 
-        setLoading(true);
-        try {
-            // Pasamos comentario y calificacion al servicio
-            const res = await enviarSugerenciaService(comentario, calificacion);
-            
-            Alert.alert("¡Gracias!", res.Message || "Tu sugerencia ha sido recibida.");
-            setComentario('');
-            setCalificacion(5);
-            router.back();
-        } catch (error: any) {
-            Alert.alert("Error", error.message || "No se pudo enviar la sugerencia en este momento.");
-        } finally {
-            setLoading(false);
-        }
+    // Obtenemos el ID del gimnasio del usuario actual
+    const gymId = users?.GimnasioActual || users?.gymId || users?.IdGym;
+
+    setLoading(true);
+    try {
+        // Ahora enviamos 3 parámetros: comentario, calificación y el ID del gimnasio
+        const res = await enviarSugerenciaService(comentario, calificacion, gymId);
+        
+        Alert.alert("¡Gracias!", res.Message || "Recibimos tu opinión.");
+        setComentario('');
+        router.back();
+    } catch (error: any) {
+        Alert.alert("Error", error.message);
+    } finally {
+        setLoading(false);
+    }
     };
 
     // Renderizado de las estrellas

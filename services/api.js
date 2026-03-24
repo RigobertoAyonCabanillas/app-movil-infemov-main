@@ -1,8 +1,8 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://100.116.49.102:5254/api/auth';
-const API_URL2 = 'http://100.116.49.102:5254/api';
+const API_URL = 'http://192.168.0.137:5254/api';
+const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
@@ -108,7 +108,7 @@ export const validarFolioAPI = async (folio) => {
     });
 
     if (!response.ok) {
-        throw new Error("Folio inválido");
+        throw new Error(`Error: ${response.status}`);
     }
 
     // 2. Recibes el objeto: { data: "affc1+wLubS..." }
@@ -281,9 +281,8 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
     };
 
     const jsonString = JSON.stringify(datos);
-    const key = CryptoJS.enc.Utf8.parse("k3P9zR7mW2vL5xN8");
+    const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
 
-    // 1. Cifrar para el servidor (.NET espera EncryptedPayload)
     const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7
@@ -299,25 +298,41 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
       body: JSON.stringify({ Data: cifrado.toString() }),
     });
 
-    const resultadoJson = await response.json();
-
-    // 2. Validar respuesta
-    if (!response.ok) {
-        throw new Error(resultadoJson.Error || "Error al cambiar la contraseña");
+    // 1. Obtener el texto plano primero para evitar errores de parseo
+    const rawText = await response.text();
+    
+    // 2. Intentar convertir a JSON solo si hay contenido
+    let resultadoJson = {};
+    if (rawText) {
+      try {
+        resultadoJson = JSON.parse(rawText);
+      } catch (e) {
+        throw new Error("La respuesta del servidor no es un JSON válido.");
+      }
     }
 
-    // 3. Descifrar la respuesta del servidor (Message exitoso)
-    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
-    const datosClaros = desencriptarDatos(payloadCifrado);
+    // 3. Validar si la respuesta HTTP fue exitosa
+    if (!response.ok) {
+        // Si el servidor mandó un error cifrado o un mensaje de error directo
+        const mensajeError = resultadoJson.Error || resultadoJson.Message || "Error al cambiar la contraseña";
+        throw new Error(mensajeError);
+    }
 
-    return datosClaros; // Retorna { Message: "..." }
+    // 4. Descifrar la respuesta (Solo si el servidor responde con Data cifrada)
+    const payloadCifrado = resultadoJson.Data || resultadoJson.data;
+    
+    if (!payloadCifrado) {
+        return resultadoJson; // Retornar tal cual si no viene cifrado (ej. un mensaje de éxito directo)
+    }
+
+    return desencriptarDatos(payloadCifrado);
+
   } catch (error) {
     console.error("❌ Error en actualizarPasswordApi:", error.message);
     throw error;
   }
 };
 
-// --- FUNCION GESTIONAR SUCURSALES (CORREGIDA) ---
 // --- FUNCION GESTIONAR SUCURSALES (ADAPTADA AL FETCH SEGURO) ---
 export const gestionarSucursalesApi = async (correo, password = "", superUsuarioId = null) => {
   try {
@@ -487,64 +502,16 @@ export const fetchSeguro = async (endpoint, opciones = {}) => {
   return response;
 };
 
-//Echo para evitar escalado del modelo Auth en C# endpoints
-export const fetchSeguro2 = async (endpoint, opciones = {}) => {
-  // 1. Extraer el token de los headers de opciones si existe (token forzado)
-  // Si no viene en opciones.headers, entonces lo buscamos en AsyncStorage
-  let token = opciones.headers?.['Authorization']?.replace('Bearer ', '') 
-              || await AsyncStorage.getItem('token');
-
-  // 2. Preparamos los headers base
-  const headersBase = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-    ...opciones.headers, // Esto permite que el token forzado gane la partida
-  };
-
-  // 2. Primer intento
-  let response = await fetch(`${API_URL2}${endpoint}`, {
-    ...opciones,
-    headers: headersBase,
-  });
-
-  // 3. ¿El token expiró? (401)
-  if (response.status === 401) {
-    console.log("🔑 Token expirado. Intentando renovar con RefreshToken...");
-
-    try {
-      // 4. Intentamos obtener el nuevo Token
-      const nuevoToken = await renovarToken();
-
-      if (nuevoToken) {
-        // 5. CRÍTICO: Reconstruimos la petición con el NUEVO TOKEN
-        // No reutilizamos el objeto anterior para evitar problemas de referencia
-        response = await fetch(`${API_URL2}${endpoint}`, {
-          ...opciones,
-          headers: {
-            ...headersBase,
-            'Authorization': `Bearer ${nuevoToken}`,
-          },
-        });
-
-        console.log("✅ Petición reintentada con éxito tras refresh");
-      }
-    } catch (error) {
-      console.error("🚨 El RefreshToken también falló. Sesión muerta.");
-      throw new Error("SESION_EXPIRADA");
-    }
-  }
-
-  return response;
-};
 
 //Sugerencias-Comentarios
 // Enviar Sugerencia con Comentario y Calificación
-export const enviarSugerenciaApi = async (comentario, calificacion) => {
+export const enviarSugerenciaApi = async (comentario, calificacion, gymId) => {
   try {
     // 1. Incluimos la Calificación en el objeto antes de cifrar
     const datos = {
       Comentario: comentario,
       Calificacion: calificacion, // Se envía como número (1-5)
+      SuperUsuarioId: gymId,
       Fecha: new Date().toISOString()
     };
 
@@ -558,7 +525,7 @@ export const enviarSugerenciaApi = async (comentario, calificacion) => {
     }).toString();
 
     // 3. Petición POST (Asegúrate de que la ruta coincida con tu Controller)
-    const response = await fetchSeguro2('/sugerencias', { 
+    const response = await fetchSeguro('/sugerencias', { 
       method: 'POST',
       body: JSON.stringify({ Data: cifrado }),
     });

@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CuentaScreen = () => {
     const { users, setUsers } = useContext(UserContext);
-    const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado } = useAuthService();
+    const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword } = useAuthService();
 
     // --- ESTADOS DE PERFIL ---
     const [nombre, setNombre] = useState('');
@@ -45,11 +45,14 @@ const CuentaScreen = () => {
             setApellidoP(users.apellidoPaterno || users.ApellidoPaterno || "");
             setApellidoM(users.apellidoMaterno || users.ApellidoMaterno || "");
             setCorreo(users.correo || users.Correo || "");
-            setTelefono(users.telefono || users.Telefono || "");
 
-            // --- AÑADE ESTO AQUÍ PARA EL GIMNASIO ---
+            // --- LIMPIEZA CON LÍMITE AL CARGAR ---
+            const telDb = users.telefono || users.Telefono || "";
+            // Usamos tu función limpiarNumero y forzamos a que solo tome 10
+            const limpio = limpiarNumero(telDb, callingCode);
+            setTelefono(limpio.slice(-10)); 
+
             const cargarNombreGym = async () => {
-                // Si la lista está vacía, la traemos primero
                 if (listaGimnasios.length === 0) {
                     const res = await gestionarSucursalesApi(users.correo || users.Correo);
                     if (res && res.Gimnasios) {
@@ -59,13 +62,24 @@ const CuentaScreen = () => {
             };
             cargarNombreGym();
         }
-    }, [users]);
+    }, [users, callingCode]);
 
     const handleGuardarPerfil = async () => {
+        // 1. Limpiamos profundamente para que solo queden números
+        const soloNumeros = telefono.replace(/[^0-9]/g, ''); 
+        const numeroFinal = soloNumeros.slice(-10);
+
         if (!nombre || !correo) {
             Alert.alert("Campos requeridos", "Nombre y Correo son obligatorios.");
             return;
         }
+        
+        // Validación de longitud para evitar números incompletos
+        if (numeroFinal.length !== 10) {
+            Alert.alert("Teléfono inválido", "El número debe tener 10 dígitos numéricos.");
+            return;
+        }
+
         setLoading(true);
         try {
             const nuevosDatos = {
@@ -73,44 +87,86 @@ const CuentaScreen = () => {
                 ApellidoPaterno: apellidoP,
                 ApellidoMaterno: apellidoM,
                 Correo: correo,
-                // Se concatena la lada al guardar
-                Telefono: `+${callingCode}${telefono}` 
+                Telefono: `+${callingCode}${numeroFinal}` 
             };
+
             const res = await sincronizarActualizacionPerfil(users.id || users.Id, nuevosDatos);
             if (res.success) {
                 setUsers((prev: any) => ({ ...prev, ...nuevosDatos, nombres: nombre }));
-                Alert.alert("Éxito", res.message);
+                Alert.alert("Éxito", "Perfil actualizado correctamente.");
                 setExpanded(false);
             }
         } catch (error: any) {
-            Alert.alert("Error", error.message || "No se pudo actualizar el perfil.");
+            Alert.alert("Error", error.message || "No se pudo actualizar.");
         } finally {
             setLoading(false);
         }
     };
 
-    const handleConfirmarCambioPass = async () => {
-        if (!oldPassword || !newPassword) {
-            Alert.alert("Campos requeridos", "Por favor llena ambos campos.");
-            return;
-        }
-        setLoading(true);
-        try {
-            const res = await actualizarPasswordApi(users.correo || users.Correo, oldPassword, newPassword);
-            if (res) {
-                Alert.alert("Seguridad Actualizada", "Tu contraseña ha sido cambiada. Inicia sesión de nuevo.", [
-                    { text: "OK", onPress: () => { setUsers(null); router.replace("/"); } }
-                ]);
-                setModalVisible(false);
-                setOldPassword('');
-                setNewPassword('');
+    const limpiarNumero = (tel: any, code: any) => {
+    if (!tel) return "";
+    // 1. Quitar todo lo que no sea número
+    let soloNumeros = tel.replace(/\D/g, '');
+    
+    // 2. Si el número empieza con el callingCode (ej: 52), lo quitamos
+    if (soloNumeros.startsWith(code)) {
+        soloNumeros = soloNumeros.slice(code.length);
+    }
+    
+    // 3. En caso de que se hayan acumulado varias ladas (ej: 5252), 
+    // lo hacemos de nuevo hasta que no empiece con el código
+    while (soloNumeros.startsWith(code) && soloNumeros.length > 10) {
+        soloNumeros = soloNumeros.slice(code.length);
+    }
+
+    return soloNumeros;
+};
+
+   const handleConfirmarCambioPass = async () => {
+    if (!oldPassword || !newPassword) {
+        Alert.alert("Campos requeridos", "Por favor llena ambos campos.");
+        return;
+    }
+
+    setLoading(true);
+    try {
+        // 1. Llamada a la API (Servidor)
+        // El token suele estar en users.token o users.Token
+        const res = await actualizarPasswordApi(oldPassword, newPassword, users.token || users.Token);
+        
+        if (res) {
+            // 2. Actualizar en SQLite (Local)
+            // Asegúrate de usar la propiedad correcta del ID (id o Id)
+            const userId = users.id || users.Id || users.usuarioId;
+            
+            if (userId) {
+                await actualizarPassword(newPassword, userId);
+            } else {
+                console.warn("⚠️ No se encontró el ID del usuario para actualizar SQLite");
             }
-        } catch (error: any) {
-            Alert.alert("Error de Seguridad", error.message);
-        } finally {
-            setLoading(false);
+
+            // 3. Respuesta al usuario
+            Alert.alert("Seguridad Actualizada", "Tu contraseña ha sido cambiada. Inicia sesión de nuevo.", [
+                { 
+                    text: "OK", 
+                    onPress: () => { 
+                        setUsers(null); 
+                        router.replace("/"); 
+                    } 
+                }
+            ]);
+
+            setModalVisible(false);
+            setOldPassword('');
+            setNewPassword('');
         }
-    };
+    } catch (error: any) {
+        // Aquí atraparás el "JSON Parse error" si la API falla o el error que lances en api.js
+        Alert.alert("Error de Seguridad", error.message);
+    } finally {
+        setLoading(false);
+    }
+};
 
     const handleAbrirConfigGym = async () => {
         setLoading(true);
@@ -198,9 +254,11 @@ const CuentaScreen = () => {
                         <TextInput 
                             label="Teléfono" 
                             value={telefono} 
-                            onChangeText={setTelefono} 
+                            // Filtramos el texto en tiempo real para dejar solo números
+                            onChangeText={(text) => setTelefono(text.replace(/[^0-9]/g, ''))}
                             mode="outlined" 
                             keyboardType="numeric" 
+                            maxLength={10}        // <-- ESTE ES EL LÍMITE VISUAL
                             style={{ flex: 1, backgroundColor: '#fff' }} 
                             activeOutlineColor="#99bc1a" 
                         />

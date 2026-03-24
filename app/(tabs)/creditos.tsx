@@ -13,6 +13,7 @@ export default function Creditos() {
 
     const { users, setUsers } = useContext(UserContext);
     
+    console.log("Datos de creditos:", users)
 
     const [index, setIndex] = useState(0); 
     const [searchGlobal, setSearchGlobal] = useState('');
@@ -47,8 +48,10 @@ export default function Creditos() {
         const cargar = async () => {
     // 1. PRIORIDAD: Usar el gymId que tenemos en el estado GLOBAL (Contexto)
     // Si acabamos de cambiar al 23, 'users.gymId' ya es 23.
-    const currentGymId = users?.gymId;
-    const currentUserId = users?.id;
+        console.log("Datos de creditos:", users)
+
+    const currentGymId = users?.GimnasioActual;
+    const currentUserId = users?.Id;
 
     if (currentUserId && currentGymId && isMounted) {
         console.log(`🚀 Sincronizando REAL: Gym ${currentGymId} para Usuario ${currentUserId}`);
