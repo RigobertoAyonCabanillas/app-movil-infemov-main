@@ -28,7 +28,7 @@ export default function TabLayout() {
         name="creditos"
         options={{
           title: 'Creditos',
-          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="star-outline" size={24} color={color} />,
         }}
       />
 

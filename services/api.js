@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.0.137:5254/api';
+const API_URL = 'http://192.168.0.106:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -219,6 +219,9 @@ export const sincronizarMembresiasDesdeApi = async (usuarioId, gymId) => {
 
         const result = await response.json();
         const datosClaros = desencriptarDatos(result.data || result.Data);
+
+        console.log("DD", datosClaros)
+
         const objetoData = (typeof datosClaros === 'string') ? JSON.parse(datosClaros) : datosClaros;
 
         return objetoData.Membresias || [];
@@ -549,3 +552,39 @@ export const enviarSugerenciaApi = async (comentario, calificacion, gymId) => {
     throw error;
   }
 };
+
+// ─── 1. OBTENER CLASES DEL GIMNASIO ───────────────────────────────
+export const obtenerClasesGimnasio = async (superUsuarioId) => {
+  try {
+    const response = await fetchSeguro(`/Gimnasio/${superUsuarioId}`, {
+      method: 'GET',
+    });
+
+    const data = await response.json();
+    console.log("Gimnasssios: ", data)
+    if (!response.ok) throw new Error(data.mensaje || 'Error al obtener clases');
+    
+    return data; 
+  } catch (error) {
+    console.error("Error en obtenerClasesGimnasio:", error.message);
+    throw error;
+  }
+};
+
+// ─── 2. OBTENER MIS CLASES INSCRITAS ──────────────────────────────
+export const obtenerMisClases = async (superUsuarioId) => {
+  try {
+    const response = await fetchSeguro(`/Clases/MisClases/${superUsuarioId}`, {
+      method: 'GET',
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.mensaje || 'Error al obtener tus clases');
+    
+    return data;
+  } catch (error) {
+    console.error("Error en obtenerMisClases:", error.message);
+    throw error;
+  }
+};
+
