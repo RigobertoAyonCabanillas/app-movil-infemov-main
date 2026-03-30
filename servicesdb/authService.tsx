@@ -210,7 +210,7 @@ const sincronizarPerfil = async (userId: number, correo: string, tokenForzado?: 
 
 //MEMBRESIAS
   const obtenerUsuarioLocal = async () => {
-    return await drizzleDb.select().from(schema.usersdb).limit(1);
+    return await drizzleDb.select().from(schema.usersdb).get();
 };
 
 // --- 5. OBTENER MEMBRESÍAS (SOLO SQLITE) ---

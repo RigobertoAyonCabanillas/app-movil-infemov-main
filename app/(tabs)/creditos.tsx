@@ -12,8 +12,6 @@ import { UserContext } from "@/components/UserContext";
 export default function Creditos() {
 
     const { users, setUsers } = useContext(UserContext);
-    
-    console.log("Datos de creditos:", users)
 
     const [index, setIndex] = useState(0); 
     const [searchGlobal, setSearchGlobal] = useState('');
@@ -48,10 +46,13 @@ export default function Creditos() {
         const cargar = async () => {
     // 1. PRIORIDAD: Usar el gymId que tenemos en el estado GLOBAL (Contexto)
     // Si acabamos de cambiar al 23, 'users.gymId' ya es 23.
-        console.log("Datos de creditos:", users)
 
-    const currentGymId = users?.GimnasioActual;
-    const currentUserId = users?.Id;
+    const datosUsuarioGym = await obtenerUsuarioLocal();
+
+    const currentGymId = datosUsuarioGym?.gymId;
+    const currentUserId = datosUsuarioGym?.id;
+
+    console.log("Datos api dfg", currentUserId)
 
     if (currentUserId && currentGymId && isMounted) {
         console.log(`🚀 Sincronizando REAL: Gym ${currentGymId} para Usuario ${currentUserId}`);
@@ -64,6 +65,8 @@ export default function Creditos() {
             // 2. Ejecutar la sincronización (Estas ya no piden Token, lo sacan solas)
             await actualizarBaseDatosLocalMembresia(currentUserId, currentGymId);
             await actualizarBaseDatosLocalCreditos(currentUserId, currentGymId);
+            console.log("Datos de creditos xdddd:", users)
+
 
             // 3. Traer de SQLite lo que acabamos de insertar
             const resM = await obtenerMembresiasLocal(currentUserId);

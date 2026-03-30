@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.0.106:5254/api';
+const API_URL = 'http://100.116.49.102:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -574,7 +574,7 @@ export const obtenerClasesGimnasio = async (superUsuarioId) => {
 // ─── 2. OBTENER MIS CLASES INSCRITAS ──────────────────────────────
 export const obtenerMisClases = async (superUsuarioId) => {
   try {
-    const response = await fetchSeguro(`/Clases/MisClases/${superUsuarioId}`, {
+    const response = await fetchSeguro(`/MisClases/${superUsuarioId}`, {
       method: 'GET',
     });
 
@@ -588,3 +588,40 @@ export const obtenerMisClases = async (superUsuarioId) => {
   }
 };
 
+// ─── 3. INSCRIBIRSE A UNA CLASE ───────────────────────────────
+// En tu archivo services/api.js
+export const inscribirAClase = async (claseId, superUsuarioId) => {
+    try {
+        const response = await fetchSeguro('/InscribirseClase', {
+            method: 'POST',
+            body: JSON.stringify({
+                claseId: claseId,
+                superUsuarioId: superUsuarioId
+            }),
+        });
+
+        // Primero leemos como texto para evitar el error de parseo si viene vacío
+        const textData = await response.text(); 
+        let data = {};
+        
+        try {
+            data = textData ? JSON.parse(textData) : {};
+        } catch (e) {
+            // Si no es JSON pero la respuesta es OK (200-299), asumimos éxito
+            if (!response.ok) {
+            // Imprimimos textData para saber qué error manda el C#
+            console.log("Cuerpo del error del servidor:", textData); 
+            throw new Error(data.mensaje || 'Error al inscribirse');
+}
+        }
+
+        if (!response.ok) {
+            throw new Error(data.mensaje || 'Error al inscribirse');
+        }
+
+        return data;
+    } catch (error) {
+        console.error("Error en inscribirAClase:", error.message);
+        throw error;
+    }
+};
