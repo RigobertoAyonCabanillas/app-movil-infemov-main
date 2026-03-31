@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://100.116.49.102:5254/api';
+const API_URL = 'http://192.168.0.106:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -572,15 +572,22 @@ export const obtenerClasesGimnasio = async (superUsuarioId) => {
 };
 
 // ─── 2. OBTENER MIS CLASES INSCRITAS ──────────────────────────────
-export const obtenerMisClases = async (superUsuarioId) => {
+// api.js
+export const obtenerMisClases = async (usuarioId, superUsuarioId) => {
   try {
-    const response = await fetchSeguro(`/MisClases/${superUsuarioId}`, {
+    // La URL debe coincidir con: [HttpGet("MisClases/{usuarioId}/{superUsuarioId}")]
+    const response = await fetchSeguro(`/MisClases/${usuarioId}/${superUsuarioId}`, {
       method: 'GET',
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.mensaje || 'Error al obtener tus clases');
-    
+    console.log("datos inscritoss", data)
+
+    if (!response.ok) {
+      throw new Error(data.mensaje || 'Error al obtener tus clases');
+    }
+
+    console.log("Inscripciones recuperadas:", data); // Aquí verás la lista de la imagen SQL
     return data;
   } catch (error) {
     console.error("Error en obtenerMisClases:", error.message);
@@ -589,34 +596,35 @@ export const obtenerMisClases = async (superUsuarioId) => {
 };
 
 // ─── 3. INSCRIBIRSE A UNA CLASE ───────────────────────────────
-// En tu archivo services/api.js
-export const inscribirAClase = async (claseId, superUsuarioId) => {
+/// Agregamos equipoId como parámetro (puedes pasarle null si no manejas equipos aún)
+export const inscribirAClase = async (claseId, equipoId = null) => {
     try {
         const response = await fetchSeguro('/InscribirseClase', {
             method: 'POST',
+            // El backend ahora espera ClaseId y EquipoId (con mayúsculas o minúsculas según tu JSON serializer)
             body: JSON.stringify({
                 claseId: claseId,
-                superUsuarioId: superUsuarioId
+                equipoId: equipoId 
             }),
         });
 
-        // Primero leemos como texto para evitar el error de parseo si viene vacío
-        const textData = await response.text(); 
+        const textData = await response.text();
         let data = {};
-        
+
         try {
             data = textData ? JSON.parse(textData) : {};
         } catch (e) {
-            // Si no es JSON pero la respuesta es OK (200-299), asumimos éxito
             if (!response.ok) {
-            // Imprimimos textData para saber qué error manda el C#
-            console.log("Cuerpo del error del servidor:", textData); 
-            throw new Error(data.mensaje || 'Error al inscribirse');
-}
+                console.log("Error no-JSON del servidor:", textData);
+                throw new Error("Error en la respuesta del servidor");
+            }
         }
 
+        // Manejo de errores específicos que definiste en el C#
         if (!response.ok) {
-            throw new Error(data.mensaje || 'Error al inscribirse');
+            // Aquí capturamos los mensajes como "sincreditos", "sinmembresia", etc.
+            const errorMsg = data.mensaje || 'Error al inscribirse xd';
+            throw new Error(errorMsg);
         }
 
         return data;

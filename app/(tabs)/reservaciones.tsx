@@ -1,5 +1,5 @@
 import React, { useState, useContext, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { 
   Text, List, Surface, DefaultTheme, 
   Provider as PaperProvider, Portal, Modal, Chip, Button 
@@ -9,43 +9,40 @@ import { es } from 'date-fns/locale';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { UserContext } from '../../components/UserContext'; 
-// Asegúrate de que obtenerMisClases e inscribirAClase estén exportados en tu api.js
 import { obtenerClasesGimnasio, obtenerMisClases, inscribirAClase } from '@/services/api';
 import moment from 'moment-timezone';
 
 interface Clase {
-  id: string;
+  id: string; 
   nombre: string;
   horaInicio: string;
   horaFin: string;
   coach: string;
   dia: string;
   tipoClaseID: number;
-  vacantes: number; // Agregado para el estado Rojo
+  vacantes: number;
 }
 
 const COLORS = {
   bg: '#000000',          
   cardBg: '#121212',      
-  accent: '#39FF14', // Verde (Disponible)
+  accent: '#39FF14',    // Verde (Libre)
   textMain: '#FFFFFF',     
   textSub: '#A0A0A0',      
-  inscrito: '#FF8C00', // Naranja (Inscrito)
-  lleno: '#FF0000',    // Rojo (Lleno)
+  inscrito: '#FF8C00',  // Naranja (Inscrito/Ocupado)
+  lleno: '#FF0000',     // Rojo (Lleno)
 };
 
 const MAPA_DISCIPLINAS: { [key: number]: string } = {
-  1: 'Spinning', 2: 'Yoga', 3: 'Cardio', 4: 'Barre', 5: 'zumba', 
-  6: 'zumba', 7: 'zumba2', 8: 'Gimnasio', 9: 'Gimnasio', 
   1009: 'CrossFit', 1010: 'Cardio', 1011: 'Cardio', 1012: 'Spinning', 
-  1013: 'Pilates', 1014: 'Zumba', 2013: 'ola', 2014: 'sdf', 
-  3017: 'Spining', 3018: 'Box', 3019: 'Spining', 3020: 'Box', 4019: 'capoeira'
+  1013: 'Pilates', 1014: 'Zumba', 3018: 'Box', 4019: 'Capoeira'
 };
 
 export default function ReservacionesScreen() {
   const { users } = useContext(UserContext);
-  const gimnasioId = users?.GimnasioActual;
-  const superUsuarioId = users?.id;
+  
+  const gimnasioId = users?.GimnasioActual; 
+  const usuarioId = users?.id || users?.Id || users?.usuario_ID; 
 
   const [inicioSemana] = useState(() => {
     const hoy = moment().tz("America/Mexico_City").startOf('day');
@@ -56,31 +53,29 @@ export default function ReservacionesScreen() {
   const diasSemana = Array.from({ length: 7 }, (_, i) => addDays(inicioSemana, i));
 
   const [clasesDisponibles, setClasesDisponibles] = useState<Clase[]>([]);
-  const [misClasesIds, setMisClasesIds] = useState<number[]>([]);
+  const [misClasesInscritas, setMisClasesInscritas] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(format(new Date(), 'yyyy-MM-dd'));
+  
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
+  
   const [disciplinaSeleccionada, setDisciplinaSeleccionada] = useState('Todas las Clases');
-
-  const disciplinasParaFiltro = [
-    'Todas las Clases', 
-    ...new Set(clasesDisponibles.map(c => c.nombre))
-  ].sort();
+  const [claseSeleccionada, setClaseSeleccionada] = useState<Clase | null>(null);
 
   const cargarDatos = async () => {
-    if (!gimnasioId) return;
+    if (!gimnasioId || !usuarioId) return;
+    
     setLoading(true);
     try {
-      // Intentamos ambos fetch, pero manejamos errores por separado para que no se bloqueen
-      const [data, inscripciones] = await Promise.allSettled([
+      const [resClases, resInscripciones] = await Promise.allSettled([
         obtenerClasesGimnasio(gimnasioId),
-        superUsuarioId ? obtenerMisClases(superUsuarioId) : Promise.resolve([])
+        obtenerMisClases(usuarioId, gimnasioId)
       ]);
 
-      // Procesar Clases del Gimnasio
-      if (data.status === 'fulfilled' && Array.isArray(data.value)) {
-        const clasesMapeadas: Clase[] = data.value.map((item: any) => ({
-          id: item.id?.toString(),
+      if (resClases.status === 'fulfilled' && Array.isArray(resClases.value)) {
+        const clasesMapeadas: Clase[] = resClases.value.map((item: any) => ({
+          id: String(item.id), 
           nombre: MAPA_DISCIPLINAS[item.tipoClase_ID] || 'Clase General', 
           horaInicio: item.horaIncio || '00:00', 
           horaFin: item.horaFin || '00:00',
@@ -92,51 +87,104 @@ export default function ReservacionesScreen() {
         setClasesDisponibles(clasesMapeadas);
       }
 
-      // Procesar Mis Inscripciones
-      if (inscripciones.status === 'fulfilled' && Array.isArray(inscripciones.value)) {
-        setMisClasesIds(inscripciones.value.map((c: any) => c.claseId || c.id));
+      if (resInscripciones.status === 'fulfilled' && Array.isArray(resInscripciones.value)) {
+        setMisClasesInscritas(resInscripciones.value);
       }
-
     } catch (error) {
-      console.error("Error cargando clases:", error);
+      console.error("Error al cargar datos:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const manejarInscripcion = async (claseId: string) => {
-    try {
-      await inscribirAClase(claseId, superUsuarioId);
-      Alert.alert("Éxito", "Te has inscrito correctamente.");
-      cargarDatos(); 
-    } catch (error: any) {
-      Alert.alert("Aviso", error.message);
-    }
-  };
-
-  useFocusEffect(useCallback(() => { cargarDatos(); }, [gimnasioId]));
+  useFocusEffect(
+    useCallback(() => {
+      cargarDatos();
+    }, [gimnasioId, usuarioId])
+  );
 
   const obtenerInfoEstado = (clase: Clase) => {
-    const inscrito = misClasesIds.includes(Number(clase.id));
-    const lleno = clase.vacantes <= 0;
+    // 1. Verificamos inscripción directa por ID
+    const yaInscritoID = misClasesInscritas.some(c => Number(c.clase_ID || c.id) === Number(clase.id));
+    if (yaInscritoID) {
+      return { color: COLORS.inscrito, label: 'INSCRITO', icon: 'calendar-check' };
+    }
 
-    if (inscrito) return { color: COLORS.inscrito, label: 'INSCRITO', icon: 'check-decagram' };
-    if (lleno) return { color: COLORS.lleno, label: 'LLENO', icon: 'account-remove' };
+    // 2. Limpieza estricta para choque de horario (Día y Hora HH:mm)
+    // Extraemos solo "10:00" de "10:00:00" para evitar fallos por segundos
+    const horaActualLimpia = clase.horaInicio.trim().substring(0, 5);
+    const diaActualLimpio = clase.dia.trim();
+
+    const choqueHorario = misClasesInscritas.some(c => {
+      const fechaInscrita = c.fecha ? c.fecha.split('T')[0].trim() : '';
+      const horaInscrita = c.horaIncio ? c.horaIncio.trim().substring(0, 5) : '';
+      
+      // Si el día Y la hora coinciden exactamente, está OCUPADO
+      return fechaInscrita === diaActualLimpio && horaInscrita === horaActualLimpia;
+    });
+
+    if (choqueHorario) {
+      return { color: COLORS.inscrito, label: 'OCUPADO', icon: 'clock-alert' };
+    }
+
+    // 3. Verificamos cupo
+    if (clase.vacantes <= 0) {
+      return { color: COLORS.lleno, label: 'LLENO', icon: 'account-remove' };
+    }
+
+    // Si no es la misma hora, se mantiene en VERDE (como pasará con Box)
     return { color: COLORS.accent, label: 'LIBRE', icon: 'clock-outline' };
+  };
+
+  const abrirSeleccionLugar = (clase: Clase) => {
+    const estado = obtenerInfoEstado(clase);
+
+    if (estado.label === 'INSCRITO') {
+      Alert.alert("Aviso", "Ya estás inscrito en esta clase.");
+      return;
+    }
+
+    if (estado.label === 'OCUPADO') {
+      Alert.alert(
+        "Horario No Disponible", 
+        `Ya tienes una clase registrada a las ${clase.horaInicio.substring(0,5)}. No puedes duplicar horario.`
+      );
+      return;
+    }
+
+    setClaseSeleccionada(clase);
+    setModalEquipoVisible(true);
+  };
+
+  const manejarInscripcionFinal = async (lugar: any) => {
+    if (!claseSeleccionada) return;
+    setModalEquipoVisible(false);
+    setLoading(true);
+    try {
+      await inscribirAClase(claseSeleccionada.id, lugar); 
+      Alert.alert("Éxito", "Te has inscrito correctamente.");
+      await cargarDatos(); 
+    } catch (error: any) {
+      Alert.alert("Aviso", error.message);
+      await cargarDatos(); 
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clasesFiltradas = disciplinaSeleccionada === 'Todas las Clases' 
     ? clasesDisponibles 
     : clasesDisponibles.filter(c => c.nombre === disciplinaSeleccionada);
 
+  const disciplinasParaFiltro = ['Todas las Clases', ...new Set(clasesDisponibles.map(c => c.nombre))].sort();
+
   return (
     <PaperProvider theme={{...DefaultTheme, colors: {...DefaultTheme.colors, background: COLORS.bg}}}>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
-        
         <Portal>
           <Modal visible={modalVisible} onDismiss={() => setModalVisible(false)} contentContainerStyle={styles.modalContainer}>
-            <Text style={styles.modalTitle}>SELECCIONAR DISCIPLINA</Text>
+            <Text style={styles.modalTitle}>FILTRAR DISCIPLINA</Text>
             <ScrollView contentContainerStyle={styles.chipContainer}>
               {disciplinasParaFiltro.map((item) => (
                 <Chip
@@ -151,6 +199,19 @@ export default function ReservacionesScreen() {
               ))}
             </ScrollView>
             <Button onPress={() => setModalVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+          </Modal>
+
+          <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
+            <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
+            <Text style={styles.modalSubtitle}>{claseSeleccionada?.nombre} - {claseSeleccionada?.horaInicio}</Text>
+            <ScrollView contentContainerStyle={styles.gridLugares}>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                <TouchableOpacity key={num} style={styles.botonLugar} onPress={() => manejarInscripcionFinal(num)}>
+                  <Text style={styles.textoLugar}>{num}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cancelar</Button>
           </Modal>
         </Portal>
 
@@ -199,9 +260,19 @@ export default function ReservacionesScreen() {
                           right={() => (
                             <View style={{ justifyContent: 'center', alignItems: 'flex-end', paddingRight: 5 }}>
                               <Text style={{ color: estado.color, fontSize: 10, fontWeight: 'bold', marginBottom: 5 }}>{estado.label}</Text>
-                              {estado.label === 'LIBRE' && (
-                                <Button compact mode="contained" buttonColor={COLORS.accent} textColor="#000" labelStyle={{fontSize: 10}} onPress={() => manejarInscripcion(clase.id)}>
+                              {estado.label === 'LIBRE' ? (
+                                <Button 
+                                  compact mode="contained" buttonColor={COLORS.accent} textColor="#000" labelStyle={{fontSize: 10}}
+                                  onPress={() => abrirSeleccionLugar(clase)}
+                                >
                                   Inscribir
+                                </Button>
+                              ) : (
+                                <Button 
+                                  compact mode="outlined" textColor={estado.color} style={{borderColor: estado.color}} labelStyle={{fontSize: 10}}
+                                  onPress={() => abrirSeleccionLugar(clase)}
+                                >
+                                  Detalles
                                 </Button>
                               )}
                             </View>
@@ -211,7 +282,7 @@ export default function ReservacionesScreen() {
                     })
                   ) : (
                     <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyText}>No hay clases para este día.</Text>
+                      <Text style={styles.emptyText}>No hay clases programadas.</Text>
                     </View>
                   )}
                 </List.Accordion>
@@ -236,9 +307,13 @@ const styles = StyleSheet.create({
   emptyContainer: { padding: 15, alignItems: 'center' },
   emptyText: { color: COLORS.textSub, fontSize: 12 },
   modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15, borderStartWidth: 1, borderColor: COLORS.accent },
-  modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
+  modalSubtitle: { color: COLORS.textSub, textAlign: 'center', marginBottom: 15, fontSize: 12 },
   chipContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   chip: { marginBottom: 8 },
   chipActive: { backgroundColor: COLORS.accent },
   chipInactive: { backgroundColor: '#333' },
+  gridLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 15 },
+  botonLugar: { backgroundColor: COLORS.accent, width: 45, height: 45, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  textoLugar: { color: '#000', fontWeight: 'bold', fontSize: 16 }
 });
