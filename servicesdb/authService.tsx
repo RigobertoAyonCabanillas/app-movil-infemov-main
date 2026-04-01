@@ -245,8 +245,8 @@ const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: numbe
                 folioMembresia: (m.FolioMembresia || m.folio || "").toString(),
                 tipo: m.TipoMembresia || m.tipo || "Sin Tipo",
                 fechaInicio: m.FechaInicio || m.fechaInicio || "",
-                fechaFin: m.FechaVencimiento || m.fechaFin || "", 
-                estatus: (m.Estatus === "Activa" || m.estatus === 1) ? 1 : 0,
+                fechaFin: m.FechaExpiracion || m.fechaFin || "", 
+                estatus: (m.Estatus === "Activo" || m.estatus === 1) ? 1 : 0,
                 userId: usuarioId,
                 gymId: gymId // <--- AHORA SÍ SE GUARDA EL GYM
             }));

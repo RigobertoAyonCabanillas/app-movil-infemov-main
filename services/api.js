@@ -243,6 +243,7 @@ export const sincronizarCreditosDesdeApi = async (usuarioId, gymId) => {
         const datosClaros = desencriptarDatos(result.data || result.Data);
         const objetoData = (typeof datosClaros === 'string') ? JSON.parse(datosClaros) : datosClaros;
 
+        console.log("DDC", datosClaros)
         return objetoData.Creditos || [];
     } catch (error) {
         console.error("❌ Error en Créditos:", error);

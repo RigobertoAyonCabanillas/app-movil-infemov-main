@@ -72,6 +72,9 @@ export default function Creditos() {
             const resM = await obtenerMembresiasLocal(currentUserId);
             const resC = await obtenerCreditosLocal(currentUserId);
 
+            console.log("DatosMMM", resM)
+            console.log("DatosCCC", resC)
+
             if (isMounted) {
                 // FILTRO DE SEGURIDAD: Solo mostrar lo que coincida con el Gym actual
                 const finalM = resM.filter((m: any) => m.gymId === currentGymId);
@@ -267,10 +270,10 @@ const HeaderFiltro = ({ title, id }: { title: string, id: string }) => (
                             {/* 5. ESTATUS */}
                             <DataTable.Cell numeric style={styles.statusCell}>
                                 <Text style={{ 
-                                    color: (index === 0 ? item.estatus : item.status) === 1 ? '#2ecc71' : '#e74c3c', 
+                                    color: (index === 0 ? item.estatus : item.estatus) === 1 ? '#2ecc71' : '#e74c3c', 
                                     fontWeight: 'bold', fontSize: 12 
                                 }}>
-                                    {(index === 0 ? item.estatus : item.status) === 1 ? "ACTIVO" : "VENCIDO"}
+                                    {(index === 0 ? item.estatus : item.estatus) === 1 ? "ACTIVO" : "VENCIDO"}
                                 </Text>
                             </DataTable.Cell>
 
