@@ -634,3 +634,33 @@ export const inscribirAClase = async (claseId, equipoId = null) => {
         throw error;
     }
 };
+
+// CANCELAR CLASE
+export const cancelarInscripcion = async (claseId) => {
+  try {
+    // Enviamos el objeto con ClaseId en el body como espera el backend
+    const response = await fetchSeguro('/CancelarClase', {
+      method: 'POST',
+      body: JSON.stringify({ ClaseId: claseId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      // Si el error es por el tiempo (1.5h), lanzamos el mensaje del backend
+      throw new Error(data.mensaje || 'Error al cancelar la clase');
+    }
+
+    // Aquí capturamos el caso especial de las 4 horas para manejarlo en la UI
+    if (data.mensaje === "fourhours") {
+        console.log("Aviso: Menos de 4 horas para la clase.");
+        return data; 
+    }
+
+    console.log("Cancelación exitosa:", data);
+    return data;
+  } catch (error) {
+    console.error("Error en cancelarInscripci on:", error.message);
+    throw error;
+  }
+};
