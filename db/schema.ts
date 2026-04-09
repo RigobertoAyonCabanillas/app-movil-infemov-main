@@ -14,6 +14,7 @@ export const usersdb = sqliteTable('usersdb', {
   token: text('token'),
   deviceId: text('deviceId'),
   gymId: integer("gymId"), // Añadir este campo si no existe
+  rol: text('rol').$type<'cliente' | 'coach'>().default('cliente'),
 });
 
 export const membresiasdb = sqliteTable('membresiasdb', {
@@ -37,4 +38,24 @@ export const creditosdb = sqliteTable('creditosdb', {
   estatus: integer('estatus'), // 1: Activo, 0: Agotado/Vencido
   userId: integer('userId'),
   gymId: integer('gymId'),
+});
+
+export const reservacionesdb = sqliteTable('reservacionesdb', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  claseId: integer('clase_id').notNull(),
+  nombreClase: text('nombre_clase').notNull(),
+  horaInicio: text('hora_inicio').notNull(),
+  horaFin: text('hora_fin').notNull(),
+  fecha: text('fecha').notNull(),
+  estado: text('estado').notNull(), // 'INSCRITO', 'ESPERA', 'DISPONIBLE'
+  lugar: integer('lugar').default(0),
+  
+  // CAMPOS EXTRA PARA LÓGICA DE INTERFAZ
+  coach: text('coach'), // Para mostrar quién da la clase
+  vacantes: integer('vacantes').default(0), // Para saber si está LLENO
+  tipoClaseID: integer('tipo_clase_id'), // Para el MAPA_DISCIPLINAS
+  
+  // GUARDAR ARRAYS COMO TEXTO (JSON.stringify)
+  lugaresOcupados: text('lugares_ocupados'), // Para calcular si hay lugar
+  esperaUsers: text('espera_users'), // Para saber la fila de espera
 });

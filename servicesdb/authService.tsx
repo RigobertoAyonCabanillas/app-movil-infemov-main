@@ -2,11 +2,20 @@ import { useMemo, useContext } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { actualizarPerfilApi, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, obtenerDatosPerfil, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
+import { actualizarPerfilApi, cancelarInscripcion, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, inscribirAClase, obtenerClasesGimnasio, obtenerDatosPerfil, obtenerMisClases, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
 import { router } from "expo-router";
 import { eq, and, sql } from 'drizzle-orm'; 
 import { UserContext } from "../components/UserContext"; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+//EL MAPA VA AQUÍ (AFUERA), sin 'export' si solo lo usas aquí, 
+// o con 'export' si lo vas a importar en otro archivo.
+export const MAPA_DISCIPLINAS: { [key: number]: string } = {
+  1: 'Spinning', 2: 'Yoga', 3: 'Cardio', 4: 'Barre', 5: 'Zumba', 6: 'Zumba',
+  7: 'Zumba', 8: 'Gimnasio', 9: 'Gimnasio', 1009: 'CrossFit', 1010: 'Cardio',
+  1011: 'Cardio', 1012: 'Spinning', 1013: 'Pilates', 1014: 'Zumba', 2013: 'Ola',
+  2014: 'Sdf', 3017: 'Spinning', 3018: 'Box', 3019: 'Spinning', 3020: 'Box', 4019: 'Capoeira'
+};
 
 export function useAuthService() {
   const db = useSQLiteContext();//Aqui ya se usa la base de datos para los queris
@@ -48,45 +57,48 @@ export function useAuthService() {
     }
   };
 
-// --- 2. LOGIN LOCAL ---
+// --- 2. LOGIN LOCAL ADAPTADO PARA ROLES ---
 const loginUsuarioProceso = async (email: string, password: string, gymSelected: number) => {
   try {
     const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
-      // 1. LIMPIEZA TOTAL (Ya lo tienes, es excelente para evitar el error de ID duplicado)
+      // 1. LIMPIEZA TOTAL
       await drizzleDb.delete(schema.usersdb);
 
-      // 2. INSERTAR con datos reales
-      // Si el API ya te devuelve Nombres/Apellidos en el login, 
-      // guárdalos de una vez para que el perfil no salga vacío al inicio.
+      // Extraemos el Rol directamente de la respuesta (según tu log: 'Cliente' o 'Coach')
+      const rolUsuario = respuestaApi.Rol || "Cliente"; 
+
+      // 2. INSERTAR en SQLite (Asegúrate de tener la columna 'rol' en tu schema)
       await drizzleDb.insert(schema.usersdb).values({
         id: respuestaApi.Id, 
         token: respuestaApi.Token,
         correo: email,
         contrasena: password,
-        nombres: respuestaApi.Nombres || "", // Trata de usar lo que venga del API
+        nombres: respuestaApi.Nombres || "", 
         apellidoPaterno: respuestaApi.ApellidoPaterno || "",
         apellidoMaterno: respuestaApi.ApellidoMaterno || "",
-        gymId: respuestaApi.GimnasioActual || gymSelected, // Backup por si el API no lo trae
-        // Los demás campos pueden ir vacíos si el API no los da en el login
+        gymId: respuestaApi.GimnasioActual || gymSelected,
+        // AGREGAMOS EL ROL AQUÍ
+        rol: rolUsuario, 
         estudiante: "",
         fechaNacimiento: "",
         telefono: "", 
-        deviceId: "",
+        deviceId: respuestaApi.DeviceId || "",
       });
 
-      // 3. ACTUALIZAR ESTADO GLOBAL (MUY IMPORTANTE)
-      // Agregamos TODOS los campos básicos para que el Contexto no pierda datos
+      // 3. ACTUALIZAR ESTADO GLOBAL (Contexto)
+      // Agregamos el rol para que las pantallas como 'reservaciones.tsx' cambien su lógica
       setUsers({ 
         id: respuestaApi.Id,
         token: respuestaApi.Token,
         gymId: respuestaApi.GimnasioActual || gymSelected,
         nombres: respuestaApi.Nombres || "",
-        correo: email
+        correo: email,
+        rol: rolUsuario // <-- Ahora el contexto sabe quién es quién
       }); 
 
-      console.log("✅ Sesión iniciada: ID", respuestaApi.Id, "Gym:", respuestaApi.GimnasioActual);
+      console.log(`✅ Sesión iniciada: ID ${respuestaApi.Id} | Rol: ${rolUsuario}`);
     }
 
     return respuestaApi;
@@ -447,7 +459,106 @@ const enviarSugerenciaService = async (comentario: string, calificacion: number,
     }
 };
 
+// AGREGA usuarioId COMO PARÁMETRO
+  // Esto soluciona el error "Cannot find name 'usuarioIdActual'"
+  const sincronizarClasesGimnasio = async (gimnasioId: number, usuarioId: number) => {
+  try {
+    // 1. Llamada a la API (Obtenemos la lista general)
+    const data = await obtenerClasesGimnasio(gimnasioId);
+    
+    // 2. Llamada a tus inscripciones para saber exactamente qué lugar tienes
+    const misInscripciones = await obtenerMisClases(usuarioId, gimnasioId);
+    
+    if (Array.isArray(data)) {
+      await drizzleDb.delete(schema.reservacionesdb);
+
+      for (const item of data) {
+        // Buscamos si esta clase específica está en mis inscripciones
+        const miReserva = Array.isArray(misInscripciones) 
+          ? misInscripciones.find((ins: any) => Number(ins.clase_ID) === Number(item.id))
+          : null;
+
+        const estaEnEsperaLista = (item.esperaUsers || []).some((id: any) => Number(id) === usuarioId);
+        
+        // Mapeo de nombre según tu MAPA_DISCIPLINAS
+        const idDisciplina = Number(item.tipoClase_ID);
+        const nombreReal = MAPA_DISCIPLINAS[idDisciplina] || item.nombre || 'Clase';
+
+        // --- CORRECCIÓN AQUÍ ---
+        // Priorizamos 'miLugar' de la respuesta principal, luego lo que diga 'misInscripciones'
+        const lugarFinal = item.miLugar || (miReserva ? miReserva.lugar : 0);
+
+        await drizzleDb.insert(schema.reservacionesdb).values({
+          id: Number(item.id),
+          claseId: Number(item.claseId || item.id),
+          nombreClase: nombreReal,
+          // Revisa si en tu esquema es 'horaInicio' u 'horaIncio' para que coincida
+          horaInicio: item.horaIncio || item.horaInicio || '00:00', 
+          horaFin: item.horaFin || '00:00',
+          coach: item.asistenciaCoach || "Staff",
+          fecha: item.fecha ? item.fecha.split('T')[0] : '',
+          vacantes: Number(item.vacantes) || 0,
+          tipoClaseID: idDisciplina,
+
+          lugaresOcupados: JSON.stringify(item.lugaresOcupados || []),
+          esperaUsers: JSON.stringify(item.esperaUsers || []),
+
+          // Determinamos el estado basado en el lugar final
+          estado: (miReserva || estaEnEsperaLista) 
+            ? (lugarFinal == 0 || estaEnEsperaLista ? "ESPERA" : "INSCRITO") 
+            : "DISPONIBLE",
+            
+          // --- CORRECCIÓN AQUÍ ---
+          // Guardamos el lugar que calculamos arriba, no solo el de miReserva
+          lugar: Number(lugarFinal), 
+        });
+      }
+    }
+    
+    return await drizzleDb.select()
+      .from(schema.reservacionesdb)
+      .orderBy(schema.reservacionesdb.horaInicio);
+
+  } catch (error) {
+    console.error("Error en sincronización:", error);
+    return await drizzleDb.select().from(schema.reservacionesdb);
+  }
+};
+
+const obtenerMisClasesProceso = async (usuarioId: number, gimnasioId: number) => {
+  try {
+    // Retornamos lo que el componente espera para unificar con las clases disponibles
+    const locales = await drizzleDb.select().from(schema.reservacionesdb);
+    // Filtramos solo donde el usuario tenga un lugar o esté en espera
+    return locales.filter(c => c.estado === 'INSCRITO' || c.estado === 'ESPERA');
+  } catch (error) {
+    return [];
+  }
+};
+
+const inscribirAClaseProceso = async (claseId: any, lugar: any, usuarioId: any) => {
+  try {
+    const response = await inscribirAClase(claseId, lugar);
+    // Después de inscribir, lo ideal es resincronizar todo para tener los arrays actualizados
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+const cancelarInscripcionProceso = async (idClase: string | number) => {
+  try {
+    await cancelarInscripcion(idClase);
+    // Al cancelar, lo marcamos como disponible localmente de inmediato
+    await drizzleDb.update(schema.reservacionesdb)
+      .set({ estado: 'DISPONIBLE', lugar: 0 })
+      .where(eq(schema.reservacionesdb.id, Number(idClase)));
+  } catch (error) {
+    throw error;
+  }
+};
+
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
-    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService };
+    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService,sincronizarClasesGimnasio, inscribirAClaseProceso, cancelarInscripcionProceso, obtenerMisClasesProceso};
 }
 

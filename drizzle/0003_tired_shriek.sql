@@ -1,0 +1,1 @@
+ALTER TABLE `usersdb` ADD `rol` text DEFAULT 'cliente';

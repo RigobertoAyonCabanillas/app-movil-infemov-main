@@ -15,11 +15,11 @@ import { useAuthService } from "@/servicesdb/authService";
 import { enviarDatosLogin, validarFolioAPI } from "@/services/api";
 
 export default function Login() {
-  const { users, setUsers } = useContext(UserContext);
+  const { setUsers } = useContext(UserContext);
   const router = useRouter();
   const { loginUsuarioProceso } = useAuthService();
 
-  // Estados para Folio
+  // Estados de Folio y Login (Se mantienen igual)
   const [folio, setFolio] = useState("");
   const [folioValidado, setFolioValidado] = useState(false);
   const [gymSelected, setGymSelected] = useState<number | null>(null);
@@ -31,44 +31,34 @@ export default function Login() {
   const passwordRef = useRef("");
 
   const handleLogin = async () => {
-  const email = emailRef.current;
-  const password = passwordRef.current;
+    const email = emailRef.current;
+    const password = passwordRef.current;
 
-  // 1. Validaciones básicas de campos vacíos
-  if (!email.trim() || !password.trim()) {
-    Alert.alert("Atención", "Por favor, ingresa tus credenciales"); 
-    return;
-  }
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Atención", "Por favor, ingresa tus credenciales");
+      return;
+    }
 
-  // 2. NUEVA VALIDACIÓN: Verificar que tengamos el ID del gimnasio
-  // Si gymSelected es null, significa que se saltaron el paso del folio de alguna forma
-  if (!gymSelected) {
-    Alert.alert("Error", "No se ha detectado el gimnasio. Por favor, ingresa el folio de nuevo.");
-    setFolioValidado(false); // Regresamos a la Vista A por seguridad
-    return;
-  }
+    if (!gymSelected) {
+      Alert.alert("Error", "No se ha detectado el gimnasio.");
+      setFolioValidado(false);
+      return;
+    }
 
-  try {
-    // 1. Una sola función que hace el fetch Y el guardado local
-  const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected);
+    try {
+      // 1. Ejecuta el proceso que guarda en SQLite y actualiza el Contexto
+      const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected);
 
-  if (usuarioLogueado) {
-    // 2. Solo si el proceso completo terminó, navegamos
-    // IMPORTANTE: Guardar el objeto completo en el contexto
-        // Esto desbloquea el 'if' en la pantalla de Perfil
-        console.log("Datos del login al entrar: ", usuarioLogueado)
+      if (usuarioLogueado) {
         setUsers(usuarioLogueado);
-    router.replace("/(tabs)/home");
-  }
-  } catch (error) {
-    const mensaje = error instanceof Error ? error.message : "Error desconocido";
-    
-    // Si el error es 401 (Unauthorized), el mensaje del backend será:
-    // "Correo, contraseña o gimnasio incorrectos."
-    Alert.alert("Error de Autenticación", mensaje);
-    console.error(error);
-  }
-};
+        // Ambos van a Home, pero el Coach verá botones distintos en la barra inferior
+        router.replace("/(tabs)/home"); 
+      }
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : "Error desconocido";
+      Alert.alert("Error de Autenticación", mensaje);
+    }
+  };
 
   const manejarValidacionFolio = async () => {
     if (!folio.trim()) {

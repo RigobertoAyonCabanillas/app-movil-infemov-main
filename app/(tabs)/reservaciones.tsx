@@ -9,7 +9,8 @@ import { es } from 'date-fns/locale';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { UserContext } from '../../components/UserContext'; 
-import { obtenerClasesGimnasio, obtenerMisClases, inscribirAClase, cancelarInscripcion } from '@/services/api';
+// Importamos el hook que contiene toda la lógica de Drizzle y API
+import { useAuthService } from '@/servicesdb/authService';
 
 interface Clase {
   id: string | number; 
@@ -37,17 +38,19 @@ const COLORS = {
   bloqueado: '#a39191', 
 };
 
-const MAPA_DISCIPLINAS: { [key: number]: string } = {
-  1: 'Spinning', 2: 'Yoga', 3: 'Cardio', 4: 'Barre', 5: 'Zumba', 6: 'Zumba',
-  7: 'Zumba', 8: 'Gimnasio', 9: 'Gimnasio', 1009: 'CrossFit', 1010: 'Cardio',
-  1011: 'Cardio', 1012: 'Spinning', 1013: 'Pilates', 1014: 'Zumba', 2013: 'Ola',
-  2014: 'Sdf', 3017: 'Spinning', 3018: 'Box', 3019: 'Spinning', 3020: 'Box', 4019: 'Capoeira'
-};
-
 export default function ReservacionesScreen() {
   const { users } = useContext(UserContext);
-  const gimnasioId = users?.gymId; 
+  const gimnasioId = Number(users?.gymId); 
   const usuarioIdActual = Number(users?.id); 
+
+  // --- LLAMADA AL HOOK PERSONALIZADO ---
+  // Extraemos las funciones que retornas en tu useAuthService
+  const { 
+    sincronizarClasesGimnasio, 
+    inscribirAClaseProceso, 
+    cancelarInscripcionProceso, 
+    obtenerMisClasesProceso 
+  } = useAuthService();
 
   const [inicioSemana] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const diasSemana = Array.from({ length: 7 }, (_, i) => addDays(inicioSemana, i));
@@ -58,36 +61,36 @@ export default function ReservacionesScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(format(new Date(), 'yyyy-MM-dd'));
   const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
   const [modalGestionVisible, setModalGestionVisible] = useState(false); 
-  const [disciplinaSeleccionada, setDisciplinaSeleccionada] = useState('Todas las Clases');
   const [claseSeleccionada, setClaseSeleccionada] = useState<Clase | null>(null); 
 
   const cargarDatos = async () => {
-    if (!gimnasioId) return;
+    if (!gimnasioId || !usuarioIdActual) return;
     setLoading(true);
     try {
-      const [resClases, resInscripciones] = await Promise.allSettled([
-        obtenerClasesGimnasio(gimnasioId),
-        obtenerMisClases(usuarioIdActual, gimnasioId)
-      ]);
+      // 1. Sincronizamos usando el proceso del hook
+      const datosLocales = await sincronizarClasesGimnasio(gimnasioId, usuarioIdActual);
 
-      if (resClases.status === 'fulfilled' && Array.isArray(resClases.value)) {
-        setClasesDisponibles(resClases.value.map((item: any) => ({
-          id: item.id,
-          nombre: MAPA_DISCIPLINAS[item.tipoClase_ID] || item.nombre || 'Clase',
-          horaInicio: item.horaIncio || '00:00',
-          horaFin: item.horaFin || '00:00',
-          coach: item.asistenciaCoach || "Staff",
-          dia: item.fecha ? item.fecha.split('T')[0] : '',
-          tipoClaseID: item.tipoClase_ID,
-          vacantes: item.vacantes || 0,
-          lugaresOcupados: item.lugaresOcupados || [],
-          esperaUsers: item.esperaUsers || [],
-        })));
-      }
+      // 2. Mapeamos los resultados de SQLite (Drizzle) al estado
+      const formateadas: Clase[] = datosLocales.map((item: any) => ({
+        id: item.claseId, 
+        nombre: item.nombreClase,
+        horaInicio: item.horaInicio,
+        horaFin: item.horaFin,
+        coach: item.coach,
+        dia: item.fecha,
+        tipoClaseID: item.tipoClaseID,
+        vacantes: item.vacantes,
+        // Parseamos los JSON que guardaste en SQLite
+        lugaresOcupados: JSON.parse(item.lugaresOcupados || '[]'),
+        esperaUsers: JSON.parse(item.esperaUsers || '[]'),
+      }));
 
-      if (resInscripciones.status === 'fulfilled' && Array.isArray(resInscripciones.value)) {
-        setMisClasesInscritas(resInscripciones.value);
-      }
+      setClasesDisponibles(formateadas);
+
+      // 3. Obtenemos mis reservas activas
+      const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
+      setMisClasesInscritas(inscripciones);
+
     } catch (error) {
       console.error("Error cargando datos:", error);
     } finally {
@@ -101,121 +104,49 @@ export default function ReservacionesScreen() {
     const claseIdNum = Number(clase.id);
     const totalOcupados = (clase.lugaresOcupados || []).length;
     const estaLleno = totalOcupados >= clase.vacantes;
-
-    const estoyEnEsperaLista = (clase.esperaUsers || []).some(id => Number(id) === usuarioIdActual);
+    const estoyEnEspera = (clase.esperaUsers || []).some(id => Number(id) === usuarioIdActual);
     
     const inscripcionPropia = misClasesInscritas.find(
-      (ins) => Number(ins.clase_ID) === claseIdNum
+      (ins) => Number(ins.id || ins.claseId || ins.clase_ID) === claseIdNum
     );
 
-    if (estoyEnEsperaLista || (inscripcionPropia && (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0"))) {
+    if (estoyEnEspera || (inscripcionPropia && (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0"))) {
       return { color: COLORS.espera, label: 'EN ESPERA', tipo: 'ESPERA' };
     }
-
     if (inscripcionPropia) {
       return { color: COLORS.inscrito, label: 'INSCRITO', tipo: 'INSCRITO' };
     }
-
-    const tengoOtraClaseEsaHora = clasesDisponibles.some(c => {
-      const idC = Number(c.id);
-      if (idC === claseIdNum) return false;
-      const apareceEnListaGral = (c.lugaresOcupados || []).some(id => Number(id) === usuarioIdActual) || 
-                                 (c.esperaUsers || []).some(id => Number(id) === usuarioIdActual);
-      const apareceEnMisInscripciones = misClasesInscritas.some(ins => Number(ins.clase_ID) === idC);
-      return (apareceEnListaGral || apareceEnMisInscripciones) && c.dia === clase.dia && c.horaInicio === clase.horaInicio;
+    const choqueHorario = clasesDisponibles.some(c => {
+        if (Number(c.id) === claseIdNum) return false;
+        const yaInscritoEnOtra = misClasesInscritas.some(ins => Number(ins.id || ins.claseId || ins.clase_ID) === Number(c.id));
+        return yaInscritoEnOtra && c.dia === clase.dia && c.horaInicio === clase.horaInicio;
     });
 
-    if (tengoOtraClaseEsaHora) return { color: COLORS.bloqueado, label: 'HORARIO OCUPADO', tipo: 'BLOQUEADO' };
+    if (choqueHorario) return { color: COLORS.bloqueado, label: 'HORARIO OCUPADO', tipo: 'BLOQUEADO' };
     if (estaLleno) return { color: COLORS.lleno, label: 'LLENO', tipo: 'LLENO' };
-
     return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
-  };
-
-  const obtenerTodasMisReservas = () => {
-    const unificadas = [...misClasesInscritas];
-
-    clasesDisponibles.forEach(clase => {
-      const enEspera = (clase.esperaUsers || []).some(id => Number(id) === usuarioIdActual);
-      const yaEstaEnLista = unificadas.some(ins => Number(ins.clase_ID) === Number(clase.id));
-
-      if (enEspera && !yaEstaEnLista) {
-        unificadas.push({
-          clase_ID: clase.id,
-          lugar: 0,
-          esSoloEspera: true 
-        });
-      }
-    });
-
-    return unificadas;
   };
 
   const ejecutarCancelacion = async (idClase: string | number) => {
     setLoading(true);
     try {
-      const resultado = await cancelarInscripcion(idClase);
-
-      setMisClasesInscritas(prev => prev.filter(ins => Number(ins.clase_ID) !== Number(idClase)));
-      setClasesDisponibles(prev => prev.map(clase => {
-        if (Number(clase.id) === Number(idClase)) {
-          return {
-            ...clase,
-            esperaUsers: (clase.esperaUsers || []).filter(uid => Number(uid) !== usuarioIdActual)
-          };
-        }
-        return clase;
-      }));
-
-      Alert.alert("Éxito", resultado.mensaje || "Acción realizada correctamente.");
+      await cancelarInscripcionProceso(idClase);
+      Alert.alert("Éxito", "Cancelación realizada.");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "No se pudo procesar la cancelación. Verifica la BASE_URL.");
+      Alert.alert("Error", error.message);
     } finally {
       await cargarDatos(); 
       setLoading(false);
     }
   };
 
-  const manejarClickBoton = (clase: Clase) => {
-    const estado = obtenerInfoEstado(clase);
-
-    if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
-      Alert.alert(
-        "Gestionar Reserva",
-        `¿Deseas cancelar tu lugar en la clase ${clase.nombre}?`,
-        [
-          { text: "Mantener mi lugar", style: "cancel" },
-          { text: "Sí, Cancelar", style: "destructive", onPress: () => ejecutarCancelacion(clase.id) }
-        ]
-      );
-      return;
-    }
-
-    if (estado.tipo === 'LLENO') {
-      setClaseSeleccionada(clase);
-      Alert.alert("Clase Llena", "¿Deseas anotarte en la lista de espera?", [
-        { text: "CANCELAR", style: "cancel" },
-        { text: "SÍ, ANOTARME", onPress: () => manejarInscripcionFinal(0) }
-      ]);
-      return;
-    }
-
-    if (estado.tipo === 'BLOQUEADO') {
-      Alert.alert("Aviso", "Ya tienes una reservación en este mismo horario.");
-      return;
-    }
-
-    setClaseSeleccionada(clase);
-    setModalEquipoVisible(true);
-  };
-
   const manejarInscripcionFinal = async (lugar: any) => {
     if (!claseSeleccionada) return;
     setModalEquipoVisible(false);
     setLoading(true);
-    const idClase = claseSeleccionada.id;
     try {
-      await inscribirAClase(idClase, lugar);
-      setMisClasesInscritas(prev => [...prev, { clase_ID: idClase, lugar: lugar }]);
+      await inscribirAClaseProceso(claseSeleccionada.id, lugar, usuarioIdActual);
+      Alert.alert("Éxito", "Inscripción completada.");
     } catch (error: any) {
       Alert.alert("Error", error.message);
     } finally {
@@ -224,13 +155,22 @@ export default function ReservacionesScreen() {
     }
   };
 
-  const obtenerNombreClase = (id: number) => {
-    const clase = clasesDisponibles.find(c => Number(c.id) === id);
-    return clase ? clase.nombre : "Clase";
+  const manejarClickBoton = (clase: Clase) => {
+    const estado = obtenerInfoEstado(clase);
+    if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
+      Alert.alert("Gestión", "¿Cancelar lugar?", [
+        { text: "No" }, { text: "Sí", onPress: () => ejecutarCancelacion(clase.id) }
+      ]);
+    } else if (estado.tipo === 'LLENO') {
+      setClaseSeleccionada(clase);
+      Alert.alert("Lleno", "¿Entrar a lista de espera?", [
+        { text: "No" }, { text: "Sí", onPress: () => manejarInscripcionFinal(0) }
+      ]);
+    } else if (estado.tipo === 'LIBRE') {
+      setClaseSeleccionada(clase);
+      setModalEquipoVisible(true);
+    }
   };
-
-  const clasesFiltradas = disciplinaSeleccionada === 'Todas las Clases' 
-    ? clasesDisponibles : clasesDisponibles.filter(c => c.nombre === disciplinaSeleccionada);
 
   return (
     <PaperProvider theme={{...DefaultTheme, colors: {...DefaultTheme.colors, background: COLORS.bg}}}>
@@ -240,31 +180,22 @@ export default function ReservacionesScreen() {
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
             <Text style={styles.modalTitle}>MIS RESERVACIONES</Text>
             <ScrollView style={{ maxHeight: 400 }}>
-              {obtenerTodasMisReservas().length === 0 ? (
-                <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>No tienes reservaciones activas.</Text>
+              {misClasesInscritas.length === 0 ? (
+                <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>Sin reservaciones.</Text>
               ) : (
-                obtenerTodasMisReservas().map((ins, index) => {
-                  const esEspera = ins.lugar === 0 || ins.lugar === "0" || ins.esSoloEspera;
-                  return (
-                    <View key={index} style={styles.itemGestion}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{obtenerNombreClase(Number(ins.clase_ID))}</Text>
-                        <Text style={{ color: esEspera ? COLORS.espera : COLORS.inscrito, fontSize: 12 }}>
-                          {esEspera ? 'LISTA DE ESPERA' : `INSCRITO - LUGAR: ${ins.lugar}`}
-                        </Text>
-                      </View>
-                      <Button 
-                        mode="outlined" 
-                        textColor={COLORS.lleno} 
-                        onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.clase_ID); }}
-                        style={{ borderColor: COLORS.lleno }}
-                        labelStyle={{ fontSize: 10 }}
-                      >
-                        Cancelar
-                      </Button>
+                misClasesInscritas.map((ins, index) => (
+                  <View key={index} style={styles.itemGestion}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase || 'Clase'}</Text>
+                      <Text style={{ color: (ins.lugar === 0 || ins.lugar === "0") ? COLORS.espera : COLORS.inscrito, fontSize: 12 }}>
+                        {(ins.lugar === 0 || ins.lugar === "0") ? 'LISTA DE ESPERA' : `LUGAR: ${ins.lugar}`}
+                      </Text>
                     </View>
-                  );
-                })
+                    <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id || ins.clase_ID); }}>
+                        Cancelar
+                    </Button>
+                  </View>
+                ))
               )}
             </ScrollView>
             <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
@@ -277,8 +208,7 @@ export default function ReservacionesScreen() {
                     const estaOcupado = (claseSeleccionada?.lugaresOcupados || []).includes(num);
                     return (
                         <TouchableOpacity 
-                            key={num} 
-                            disabled={estaOcupado}
+                            key={num} disabled={estaOcupado}
                             onPress={() => manejarInscripcionFinal(num)}
                             style={[styles.botonLugar, { backgroundColor: estaOcupado ? COLORS.ocupado : COLORS.accent }]}
                         >
@@ -287,22 +217,16 @@ export default function ReservacionesScreen() {
                     );
                 })}
             </View>
-            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cancelar</Button>
+            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
           </Modal>
         </Portal>
 
         <Surface style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <View style={{ width: 40 }} /> 
+            <View style={{ width: 40 }} />
             <Text style={styles.headerTitle}>HORARIOS SEMANALES</Text>
-            <IconButton 
-              icon="calendar-check" 
-              iconColor={COLORS.accent} 
-              size={28} 
-              onPress={() => setModalGestionVisible(true)} 
-            />
+            <IconButton icon="calendar-check" iconColor={COLORS.accent} size={28} onPress={() => setModalGestionVisible(true)} />
           </View>
-          <Text style={styles.dateRange}>06 de abr - 12 de abr</Text> 
         </Surface>
 
         {loading ? (
@@ -311,7 +235,7 @@ export default function ReservacionesScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {diasSemana.map((dia) => {
               const fechaID = format(dia, 'yyyy-MM-dd');
-              const clasesDelDia = clasesFiltradas.filter(c => c.dia === fechaID);
+              const clasesDelDia = clasesDisponibles.filter(c => c.dia === fechaID);
               return (
                 <List.Accordion
                   key={fechaID}
@@ -333,20 +257,13 @@ export default function ReservacionesScreen() {
                         style={[styles.listItem, { borderLeftWidth: 4, borderLeftColor: estado.color }]}
                         right={() => (
                           <View style={styles.rightContainer}>
-                            {estado.tipo === 'LLENO' && (
-                                <View style={styles.floatingQuestion}>
-                                    <Text style={styles.questionText}>¿Entrar a lista de espera?</Text>
-                                </View>
-                            )}
                             <Text style={{ color: estado.color, fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>{estado.label}</Text>
                             <Button 
-                              mode="contained" 
-                              buttonColor={estado.color} 
-                              onPress={() => manejarClickBoton(clase)} 
+                              mode="contained" buttonColor={estado.color} onPress={() => manejarClickBoton(clase)} 
                               labelStyle={{ fontSize: 11, color: '#000', fontWeight: 'bold' }}
                               style={{ borderRadius: 20, minWidth: 95 }}
                             >
-                              {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : (estado.tipo === 'LLENO' ? 'Esperar' : 'Inscribir')}
+                              {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : (estado.tipo === 'LLENO' ? 'Esperar?' : 'Inscribir')}
                             </Button>
                           </View>
                         )}
@@ -367,15 +284,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   header: { paddingVertical: 10, paddingHorizontal: 20, backgroundColor: COLORS.cardBg, alignItems: 'center' },
   headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18 },
-  dateRange: { color: COLORS.accent, fontSize: 12, marginTop: -5, marginBottom: 10 },
   scrollContent: { padding: 15 },
   accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5 },
   listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, paddingVertical: 10 },
   rightContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 110 },
-  floatingQuestion: { position: 'absolute', top: -15, width: 140, alignItems: 'center' },
-  questionText: { color: COLORS.textSub, fontSize: 9, fontStyle: 'italic', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 4, borderRadius: 4 },
   modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 10 },
-  modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15, borderWidth: 1, borderColor: '#333' },
+  modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   filaLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 },
   botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 5 },
