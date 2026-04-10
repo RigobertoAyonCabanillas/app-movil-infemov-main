@@ -1,8 +1,9 @@
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { Ionicons } from '@expo/vector-icons'; 
 import { Image } from "react-native";
 import { useContext } from "react";
 import { UserContext } from "../../components/UserContext";
+import { IconButton } from 'react-native-paper';
 
 export default function TabLayout() {
     const { users } = useContext(UserContext);
@@ -15,7 +16,7 @@ export default function TabLayout() {
             headerTintColor: '#fff',
             tabBarStyle: { backgroundColor: '#000' }
         }}>
-            {/* 1. HOME: Visible para AMBOS */}
+            {/* 1. HOME */}
             <Tabs.Screen
                 name="home"
                 options={{
@@ -24,41 +25,49 @@ export default function TabLayout() {
                 }}
             />
 
-            {/* 2. PASE LISTA: Solo para Coach */}
+            {/* 2. PASE LISTA */}
             <Tabs.Screen
                 name="paselista"
                 options={{
                     title: 'Lista',
                     tabBarIcon: ({ color }) => <Ionicons name="list-outline" size={24} color={color} />,
-                    href: esCoach ? undefined : null, // Oculto para clientes
+                    href: esCoach ? undefined : null,
                 }}
             />
 
-            {/* 3. RESERVACIONES: Solo para Clientes */}
+            {/* 3. RESERVACIONES */}
             <Tabs.Screen
                 name="reservaciones"
                 options={{
                     title: 'Reservaciones',
                     tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={24} color={color} />,
-                    href: esCoach ? null : undefined, // Oculto para coach
+                    href: esCoach ? null : undefined,
                 }}
             />
 
-            {/* 4. CREDITOS: Solo para Clientes */}
+            {/* 4. CREDITOS */}
             <Tabs.Screen
                 name="creditos"
                 options={{
                     title: 'Créditos',
                     tabBarIcon: ({ color }) => <Ionicons name="star-outline" size={24} color={color} />,
-                    href: esCoach ? null : undefined, // Oculto para coach
+                    href: esCoach ? null : undefined,
                 }}
             />
 
-            {/* 5. PERFIL: Visible para AMBOS */}
+            {/* 5. PERFIL (Configurado con el botón de ajustes) */}
             <Tabs.Screen
                 name="perfil"
                 options={{
                     title: 'Mi Perfil',
+                    headerRight: () => (
+                        <IconButton 
+                            icon="cog-outline" 
+                            iconColor="#fff" 
+                            size={26} 
+                            onPress={() => router.push('/(settings)/ajustes')} 
+                        />
+                    ),
                     tabBarIcon: ({ focused }) => (
                         <Image
                             source={{ uri: 'https://i.redd.it/qm3p4sotkjgd1.jpeg' }} 

@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://100.116.49.102:5254/api';
+const API_URL = 'http://192.168.0.103:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -661,6 +661,95 @@ export const cancelarInscripcion = async (claseId) => {
     return data;
   } catch (error) {
     console.error("Error en cancelarInscripci on:", error.message);
+    throw error;
+  }
+};
+
+// OBTENER CLASES DEL COACH
+export const obtenerMisClasesCoach = async (superUsuarioId) => {
+  try {
+    // Se concatena el superUsuarioId en la ruta del endpoint
+    const response = await fetchSeguro(`/MisClasesCoach/${superUsuarioId}`, {
+      method: 'GET',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.mensaje || 'Error al obtener las clases del coach');
+    }
+
+    console.log("Clases del coach obtenidas:", data);
+    return data; // Retorna la lista de clases
+  } catch (error) {
+    console.error("Error en obtenerMisClasesCoach:", error.message);
+    throw error;
+  }
+};
+
+// MARCAR ASISTENCIA DEL COACH
+export const marcarAsistenciaCoach = async (claseId) => {
+  try {
+    // Enviamos el ClaseId en el body como espera el AsistenciaCoachRequest
+    const response = await fetchSeguro('/AsistenciaCoach', {
+      method: 'POST',
+      body: JSON.stringify({ ClaseId: claseId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.mensaje || 'Error al marcar la asistencia');
+    }
+
+    console.log("Asistencia marcada exitosamente:", data);
+    return data;
+  } catch (error) {
+    console.error("Error en marcarAsistenciaCoach:", error.message);
+    throw error;
+  }
+};
+
+// GENERAR TOKEN QR PARA EL CLIENTE
+export const generarQrUsuario = async () => {
+  try {
+    // El backend extrae el UsuarioId del token JWT (Authorize)
+    const response = await fetchSeguro('/GenerarQr', {
+      method: 'POST',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.mensaje || 'Error al generar el QR');
+    }
+
+    console.log("QR generado exitosamente:", data.token);
+    return data; // Contiene: mensaje, token, expira
+  } catch (error) {
+    console.error("Error en generarQrUsuario:", error.message);
+    throw error;
+  }
+};
+
+// VALIDAR TOKEN QR (Para el flujo del Coach/Recepción)
+export const validarQrUsuario = async (token) => {
+  try {
+    const response = await fetchSeguro('/ValidarQr', {
+      method: 'POST',
+      body: JSON.stringify({ Token: token }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.mensaje || 'Error al validar el QR');
+    }
+
+    console.log("QR validado exitosamente:", data.nombre);
+    return data; // Contiene: mensaje, usuarioId, nombre, correo, gimnasioId
+  } catch (error) {
+    console.error("Error en validarQrUsuario:", error.message);
     throw error;
   }
 };
