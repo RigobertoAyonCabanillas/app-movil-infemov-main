@@ -3,6 +3,16 @@ import { StyleSheet, ScrollView, View } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 
+// Colores consistentes con tu interfaz Dark/Neon
+const COLORS = {
+    bg: '#121212',
+    cardBg: '#1e1e1e',
+    accent: '#99bc1a',
+    textMain: '#ffffff',
+    textSecondary: '#aaaaaa',
+    border: '#333333'
+};
+
 const PrivacidadScreen = () => {
     const router = useRouter();
 
@@ -18,8 +28,10 @@ const PrivacidadScreen = () => {
                 </Text>
 
                 <Text style={styles.sectionTitle}>1. Información que Recopilamos</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Datos Proporcionados:</Text> Nombre, RFC, correo, teléfono y datos de pago.</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Uso del Software:</Text> Funciones utilizadas, tiempo de permanencia e IP.</Text>
+                <View style={styles.bulletContainer}>
+                    <Text style={styles.bullet}>• <Text style={styles.bold}>Datos Proporcionados:</Text> Nombre, RFC, correo, teléfono y datos de pago.</Text>
+                    <Text style={styles.bullet}>• <Text style={styles.bold}>Uso del Software:</Text> Funciones utilizadas, tiempo de permanencia e IP.</Text>
+                </View>
 
                 <Text style={styles.sectionTitle}>2. Finalidad del Tratamiento</Text>
                 <Text style={styles.paragraph}>
@@ -29,7 +41,7 @@ const PrivacidadScreen = () => {
                 <Text style={styles.sectionTitle}>7. Sus Derechos ARCO</Text>
                 <Text style={styles.paragraph}>
                     Usted puede ejercer sus derechos de Acceso, Rectificación, Cancelación y Oposición escribiendo a: 
-                    <Text style={{color: '#FF3CAC'}}> vvelazco@infemov.com.mx</Text>
+                    <Text style={{ color: COLORS.accent, fontWeight: 'bold' }}> vvelazco@infemov.com.mx</Text>
                 </Text>
 
                 <Text style={styles.sectionTitle}>5. Seguridad de los Datos</Text>
@@ -39,7 +51,14 @@ const PrivacidadScreen = () => {
             </ScrollView>
 
             <View style={styles.footer}>
-                <Button mode="contained" onPress={() => router.back()} buttonColor="#99bc1a" style={styles.button}>
+                <Button 
+                    mode="contained" 
+                    onPress={() => router.back()} 
+                    buttonColor={COLORS.accent} 
+                    textColor="#000"
+                    style={styles.button}
+                    contentStyle={{ height: 50 }}
+                >
                     He leído la política
                 </Button>
             </View>
@@ -47,19 +66,68 @@ const PrivacidadScreen = () => {
     );
 };
 
-// Reutilizamos los mismos estilos para mantener coherencia visual
 const styles = StyleSheet.create({
-    mainContainer: { flex: 1, backgroundColor: '#fff' },
-    container: { flex: 1 },
-    content: { padding: 20, paddingBottom: 40 },
-    updateText: { fontSize: 12, color: '#666', marginBottom: 10 },
-    title: { fontSize: 20, fontWeight: 'bold', color: '#FF3CAC', marginBottom: 15 },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', marginTop: 20, marginBottom: 5, color: '#333' },
-    paragraph: { fontSize: 14, lineHeight: 22, color: '#444', textAlign: 'justify', marginBottom: 10 },
-    bullet: { fontSize: 14, marginLeft: 10, marginBottom: 8, color: '#444' },
-    bold: { fontWeight: 'bold' },
-    footer: { padding: 15, borderTopWidth: 1, borderColor: '#eee' },
-    button: { borderRadius: 8 }
+    mainContainer: { 
+        flex: 1, 
+        backgroundColor: COLORS.bg 
+    },
+    container: { 
+        flex: 1 
+    },
+    content: { 
+        padding: 24, 
+        paddingBottom: 40 
+    },
+    updateText: { 
+        fontSize: 12, 
+        color: COLORS.textSecondary, 
+        marginBottom: 10,
+        fontStyle: 'italic'
+    },
+    title: { 
+        fontSize: 22, 
+        fontWeight: 'bold', 
+        color: COLORS.accent, 
+        marginBottom: 15 
+    },
+    sectionTitle: { 
+        fontSize: 17, 
+        fontWeight: 'bold', 
+        marginTop: 25, 
+        marginBottom: 10, 
+        color: COLORS.textMain 
+    },
+    paragraph: { 
+        fontSize: 14, 
+        lineHeight: 22, 
+        color: COLORS.textSecondary, 
+        textAlign: 'justify', 
+        marginBottom: 12 
+    },
+    bulletContainer: {
+        marginVertical: 10
+    },
+    bullet: { 
+        fontSize: 14, 
+        lineHeight: 22,
+        marginLeft: 10, 
+        marginBottom: 10, 
+        color: COLORS.textSecondary 
+    },
+    bold: { 
+        fontWeight: 'bold', 
+        color: COLORS.textMain 
+    },
+    footer: { 
+        padding: 20, 
+        borderTopWidth: 1, 
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.bg
+    },
+    button: { 
+        borderRadius: 12,
+        elevation: 4
+    }
 });
 
 export default PrivacidadScreen;

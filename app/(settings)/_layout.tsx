@@ -6,9 +6,9 @@ export default function SettingsLayout() {
       screenOptions={{
         // Estilo global para las cabeceras de ajustes
         headerStyle: {
-          backgroundColor: '#fff',
+          backgroundColor: '#000000',
         },
-        headerTintColor: '#333',
+        headerTintColor: '#ffffff',
         headerTitleStyle: {
           fontWeight: 'bold',
         },

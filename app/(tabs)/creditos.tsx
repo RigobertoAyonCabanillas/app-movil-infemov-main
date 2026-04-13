@@ -1,7 +1,7 @@
 import { useFocusEffect } from "expo-router";
 import { useState, useCallback, useMemo, useContext } from 'react';
-import { View, Text, ScrollView, StyleSheet } from "react-native";
-import { DataTable, Searchbar, PaperProvider, Menu, Divider, TextInput, Button } from 'react-native-paper'; //Libreria de DataTable
+import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
+import { DataTable, Searchbar, PaperProvider, Menu, Divider, TextInput, Button, MD3DarkTheme } from 'react-native-paper';
 import { Container, InfoCard, NavRow, IconButton } from "@/styles/creditosStyle";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthService } from "@/servicesdb/authService"; 
@@ -9,20 +9,18 @@ import * as schema from '@/db/schema';
 import { InferSelectModel } from 'drizzle-orm';
 import { UserContext } from "@/components/UserContext";
 
-export default function Creditos() {
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-    const { users, setUsers } = useContext(UserContext);
+export default function Creditos() {
+    const { users } = useContext(UserContext);
 
     const [index, setIndex] = useState(0); 
     const [searchGlobal, setSearchGlobal] = useState('');
     
-    // Paginación
     const [page, setPage] = useState(0);
-    const [numberOfItemsPerPageList] = useState([5, 10, 20]);
-    const [itemsPerPage, setItemsPerPage] = useState(numberOfItemsPerPageList[1]);
+    const [itemsPerPage, setItemsPerPage] = useState(10); 
     const [menuPaginationVisible, setMenuPaginationVisible] = useState(false);
 
-    // Filtros y Ordenamiento
     const [filtrosColumna, setFiltrosColumna] = useState<{[key: string]: string}>({});
     const [visibleMenu, setVisibleMenu] = useState<string | null>(null);
     const [sortAsc, setSortAsc] = useState(true);
@@ -37,84 +35,52 @@ export default function Creditos() {
         setIndex((prev) => (prev === 0 ? 1 : 0));
         setPage(0);
         setFiltrosColumna({});
+        setSortKey(null);
     };
 
     useFocusEffect(
-    useCallback(() => {
-        let isMounted = true;
+        useCallback(() => {
+            let isMounted = true;
+            const cargar = async () => {
+                const datosUsuarioGym = await obtenerUsuarioLocal();
+                const currentGymId = datosUsuarioGym?.gymId;
+                const currentUserId = datosUsuarioGym?.id;
 
-        const cargar = async () => {
-    // 1. PRIORIDAD: Usar el gymId que tenemos en el estado GLOBAL (Contexto)
-    // Si acabamos de cambiar al 23, 'users.gymId' ya es 23.
+                if (currentUserId && currentGymId && isMounted) {
+                    try {
+                        await actualizarBaseDatosLocalMembresia(currentUserId, currentGymId);
+                        await actualizarBaseDatosLocalCreditos(currentUserId, currentGymId);
+                        const resM = await obtenerMembresiasLocal(currentUserId);
+                        const resC = await obtenerCreditosLocal(currentUserId);
 
-    const datosUsuarioGym = await obtenerUsuarioLocal();
+                        if (isMounted) {
+                            setListaMembresias(resM.filter((m: any) => m.gymId === currentGymId));
+                            setListaCreditos(resC.filter((c: any) => c.gymId === currentGymId));
+                        }
+                    } catch (err) {
+                        console.error("Error al sincronizar datos:", err);
+                    }
+                }
+            };
+            cargar();
+            return () => { isMounted = false; };
+        }, [users?.gymId]) 
+    );
 
-    const currentGymId = datosUsuarioGym?.gymId;
-    const currentUserId = datosUsuarioGym?.id;
-
-    console.log("Datos api dfg", currentUserId)
-
-    if (currentUserId && currentGymId && isMounted) {
-        console.log(`🚀 Sincronizando REAL: Gym ${currentGymId} para Usuario ${currentUserId}`);
-
-        // Limpiamos pantalla para que el usuario vea que algo está pasando
-        setListaMembresias([]);
-        setListaCreditos([]);
-
-        try {
-            // 2. Ejecutar la sincronización (Estas ya no piden Token, lo sacan solas)
-            await actualizarBaseDatosLocalMembresia(currentUserId, currentGymId);
-            await actualizarBaseDatosLocalCreditos(currentUserId, currentGymId);
-            console.log("Datos de creditos xdddd:", users)
-
-
-            // 3. Traer de SQLite lo que acabamos de insertar
-            const resM = await obtenerMembresiasLocal(currentUserId);
-            const resC = await obtenerCreditosLocal(currentUserId);
-
-            console.log("DatosMMM", resM)
-            console.log("DatosCCC", resC)
-
-            if (isMounted) {
-                // FILTRO DE SEGURIDAD: Solo mostrar lo que coincida con el Gym actual
-                const finalM = resM.filter((m: any) => m.gymId === currentGymId);
-                const finalC = resC.filter((c: any) => c.gymId === currentGymId);
-
-                setListaMembresias(finalM);
-                setListaCreditos(finalC);
-                console.log(`✅ Visualizando ${finalC.length} créditos del Gym ${currentGymId}`);
-            }
-        } catch (err) {
-            console.error("Error al sincronizar datos:", err);
-        }
-        }
-    };
-
-        cargar();
-
-        return () => {
-            isMounted = false;
-        };
-        
-        // Dependencias: Si users.gymId cambia en el contexto, el efecto se dispara de nuevo
-    }, [users?.gymId, users?.token]) 
-);
-
-
-    // Define esto fuera de tu componente o antes del useMemo
     type FilaTabla = typeof listaCreditos[0] | typeof listaMembresias[0];
+    
     const datosFinales = useMemo(() => {
-        
-        // Forzamos el tipo aquí para que acepte ambos casos
         let items: FilaTabla[] = index === 0 ? [...listaCreditos] : [...listaMembresias];
 
         if (searchGlobal) {
             items = items.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(searchGlobal.toLowerCase())));
         }
+
         Object.keys(filtrosColumna).forEach(key => {
             const val = filtrosColumna[key].toLowerCase();
             if (val) items = items.filter(item => String((item as any)[key]).toLowerCase().includes(val));
         });
+
         if (sortKey) {
             items.sort((a: any, b: any) => {
                 let vA = a[sortKey] ?? ""; let vB = b[sortKey] ?? "";
@@ -132,204 +98,177 @@ export default function Creditos() {
         return items;
     }, [index, listaCreditos, listaMembresias, searchGlobal, filtrosColumna, sortKey, sortAsc]);
 
+    const opcionesPaginacion = useMemo(() => {
+        const total = datosFinales.length;
+        if (total === 0) return [10];
+        const opciones = [];
+        for (let i = 10; i < total; i += 10) { opciones.push(i); }
+        opciones.push(total);
+        return opciones;
+    }, [datosFinales.length]);
+
+    const totalPages = Math.ceil(datosFinales.length / itemsPerPage);
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 0 && newPage < totalPages) { setPage(newPage); }
+    };
+
     const itemsPaginados = useMemo(() => {
-        return datosFinales.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+        const start = page * itemsPerPage;
+        return datosFinales.slice(start, start + itemsPerPage);
     }, [datosFinales, page, itemsPerPage]);
 
-    // Anchos constantes para evitar desalineación
-    const COL_WIDTH = 140;
-    const STATUS_WIDTH = 100;
+    // COMPONENTE CORREGIDO: No borra el encabezado, solo desactiva la interacción y oculta la flecha
+    const HeaderFiltro = ({ title, id, showArrow = true }: { title: string, id: string, showArrow?: boolean }) => {
+        const content = (
+            <DataTable.Title 
+                numeric 
+                onPress={showArrow ? () => setVisibleMenu(id) : undefined} 
+                style={[styles.fixedCell, styles.borderRight]}
+            >
+                <Text style={styles.headerLabel}>{title}</Text>
+                {showArrow && <Ionicons name="caret-down" size={10} color="#00E5FF" style={{marginLeft: 4}} />}
+            </DataTable.Title>
+        );
 
-const HeaderFiltro = ({ title, id }: { title: string, id: string }) => (
-        <Menu
-            visible={visibleMenu === id}
-            onDismiss={() => setVisibleMenu(null)}
-            anchor={
-                <DataTable.Title 
-                    numeric 
-                    onPress={() => setVisibleMenu(id)}
-                    sortDirection={sortKey === id ? (sortAsc ? 'ascending' : 'descending') : undefined}
-                    style={[styles.fixedCell, styles.borderRight]}
-                >
-                    <Text style={styles.headerLabel}>{title} </Text>
-                    <Ionicons name="caret-down" size={10} color={filtrosColumna[id] ? "#007AFF" : "#888"} />
-                </DataTable.Title>
-            }
-        >
-            <Menu.Item onPress={() => { setSortKey(id); setSortAsc(true); setVisibleMenu(null); }} title="Ordenar A-Z" leadingIcon="sort-ascending" />
-            <Menu.Item onPress={() => { setSortKey(id); setSortAsc(false); setVisibleMenu(null); }} title="Ordenar Z-A" leadingIcon="sort-descending" />
-            <Divider />
-            <TextInput
-                placeholder="Filtrar..."
-                value={filtrosColumna[id] || ''}
-                onChangeText={(t) => {setFiltrosColumna(prev => ({...prev, [id]: t})); setPage(0);}}
-                style={styles.inputMini}
-                mode="outlined"
-                dense
-            />
-        </Menu>
-    );
+        return (
+            <Menu
+                visible={showArrow && visibleMenu === id} // Solo se muestra si showArrow es true
+                onDismiss={() => setVisibleMenu(null)}
+                contentStyle={{ backgroundColor: '#1A1A1A', minWidth: 150 }}
+                anchor={content}
+            >
+                <Menu.Item titleStyle={{color: '#FFF'}} onPress={() => { setSortKey(id); setSortAsc(true); setVisibleMenu(null); }} title="Ordenar A-Z" leadingIcon="sort-ascending" />
+                <Menu.Item titleStyle={{color: '#FFF'}} onPress={() => { setSortKey(id); setSortAsc(false); setVisibleMenu(null); }} title="Ordenar Z-A" leadingIcon="sort-descending" />
+                <Divider style={{backgroundColor: '#333'}} />
+                <TextInput
+                    placeholder="Filtrar..."
+                    placeholderTextColor="#666"
+                    value={filtrosColumna[id] || ''}
+                    onChangeText={(t) => {setFiltrosColumna(prev => ({...prev, [id]: t})); setPage(0);}}
+                    style={styles.inputMini}
+                    textColor="#FFF"
+                    dense
+                    underlineColor="transparent"
+                />
+            </Menu>
+        );
+    };
 
     return (
-     <PaperProvider>
-      <Container style={{ flex: 1 }}>
-        <InfoCard>
-          <NavRow>
-            <IconButton onPress={alternarTab}><Ionicons name="chevron-back" size={24} color="#007AFF" /></IconButton>
-            <View style={{ alignItems: 'center' }}>
-                <Text style={styles.tabLabel}>{index === 0 ? "CRÉDITOS" : "MEMBRESÍAS"}</Text>
-                <Text style={styles.bigCount}>{datosFinales.length} Total</Text>
-            </View>
-            <IconButton onPress={alternarTab}><Ionicons name="chevron-forward" size={24} color="#007AFF" /></IconButton>
-          </NavRow>
-        </InfoCard>
+        <PaperProvider theme={MD3DarkTheme}>
+            <Container style={styles.mainContainer}>
+                <InfoCard style={styles.neonCard}>
+                    <NavRow>
+                        <IconButton onPress={alternarTab}><Ionicons name="chevron-back-circle" size={32} color="#00E5FF" /></IconButton>
+                        <View style={{ alignItems: 'center' }}>
+                            <Text style={styles.neonTabLabel}>{index === 0 ? "CRÉDITOS" : "MEMBRESÍAS"}</Text>
+                            <Text style={styles.neonBigCount}>{datosFinales.length} Total</Text>
+                        </View>
+                        <IconButton onPress={alternarTab}><Ionicons name="chevron-forward-circle" size={32} color="#00E5FF" /></IconButton>
+                    </NavRow>
+                </InfoCard>
 
-        <View style={styles.toolbar}>
-            <Menu
-                visible={menuPaginationVisible}
-                onDismiss={() => setMenuPaginationVisible(false)}
-                anchor={
-                    <Button mode="outlined" onPress={() => setMenuPaginationVisible(true)} style={styles.btnPage} labelStyle={{fontSize: 12}}>
-                        Ver {itemsPerPage}
-                    </Button>
-                }
-            >
-                {numberOfItemsPerPageList.map(n => (
-                    <Menu.Item key={n} onPress={() => { setItemsPerPage(n); setPage(0); setMenuPaginationVisible(false); }} title={n.toString()} />
-                ))}
-            </Menu>
-            <Searchbar 
-                placeholder="Buscar..." 
-                onChangeText={setSearchGlobal} 
-                value={searchGlobal} 
-                style={styles.search} 
-                inputStyle={styles.searchTextInput}
-            />
-        </View>
+                <View style={styles.toolbar}>
+                    <Menu
+                        visible={menuPaginationVisible}
+                        onDismiss={() => setMenuPaginationVisible(false)}
+                        contentStyle={{ backgroundColor: '#1A1A1A' }}
+                        anchor={
+                            <Button mode="outlined" onPress={() => setMenuPaginationVisible(true)} style={styles.neonBtnPage} labelStyle={{color: '#00E5FF', fontSize: 12, fontWeight: 'bold'}}>
+                                Ver {itemsPerPage > datosFinales.length ? datosFinales.length : itemsPerPage}
+                            </Button>
+                        }
+                    >
+                        {opcionesPaginacion.map(n => (
+                            <Menu.Item 
+                                key={n} 
+                                titleStyle={{color: '#FFF'}} 
+                                onPress={() => { setItemsPerPage(n); setPage(0); setMenuPaginationVisible(false); }} 
+                                title={n === datosFinales.length ? `Ver todos (${n})` : `Ver ${n}`} 
+                            />
+                        ))}
+                    </Menu>
 
-        <View style={styles.tableWrapper}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                {/* Eliminamos el ancho fijo del View/DataTable para que crezca con las columnas */}
-                <DataTable style={{ alignSelf: 'flex-start' }}>
-                    <DataTable.Header style={styles.headerBg}>
-                        {/* 1. FOLIO */}
-                        <HeaderFiltro 
-                            title={index === 0 ? "FOLIO CRÉDITO" : "FOLIO MEMBRESÍA"} 
-                            id={index === 0 ? "folioCredito" : "folioMembresia"} 
+                    <Searchbar 
+                        placeholder="Buscar..." 
+                        onChangeText={setSearchGlobal} 
+                        value={searchGlobal} 
+                        style={styles.neonSearch} 
+                        iconColor="#00E5FF"
+                        placeholderTextColor="#666"
+                        inputStyle={{ color: '#FFF', fontSize: 14, paddingVertical: 0, minHeight: 45 }}
+                        cursorColor="#00E5FF"
+                    />
+                </View>
+
+                <View style={styles.neonTableWrapper}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                        <View>
+                            <DataTable.Header style={styles.neonHeader}>
+                                <HeaderFiltro title="FOLIO" id={index === 0 ? "folioCredito" : "folioMembresia"} showArrow={false} />
+                                <HeaderFiltro title={index === 0 ? "EXPIRACIÓN" : "TIPO"} id={index === 0 ? "fechaExpiracion" : "tipo"} showArrow={false} />
+                                <HeaderFiltro title={index === 0 ? "PAQUETE" : "INICIO"} id={index === 0 ? "paquete" : "fechaInicio"} showArrow={false} />
+                                <HeaderFiltro title={index === 0 ? "PAGO" : "VENCIMIENTO"} id={index === 0 ? "fechaPago" : "fechaFin"} showArrow={false} />
+                                
+                                <DataTable.Title numeric style={styles.statusCell}>
+                                    <Text style={styles.headerLabel}>ESTATUS</Text>
+                                </DataTable.Title>
+                            </DataTable.Header>
+
+                            <ScrollView style={styles.verticalScrollContainer}>
+                                {itemsPaginados.map((item: any, idx) => (
+                                    <DataTable.Row key={item.id || idx} style={styles.neonRow}>
+                                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}><Text style={styles.neonCellText}>{index === 0 ? item.folioCredito : item.folioMembresia}</Text></DataTable.Cell>
+                                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}><Text style={styles.neonCellText}>{index === 0 ? item.fechaExpiracion : item.tipo}</Text></DataTable.Cell>
+                                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}><Text style={styles.neonCellText}>{index === 0 ? item.paquete : item.fechaInicio}</Text></DataTable.Cell>
+                                        <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}><Text style={styles.neonCellText}>{index === 0 ? item.fechaPago : item.fechaFin}</Text></DataTable.Cell>
+                                        <DataTable.Cell numeric style={styles.statusCell}>
+                                            <Text style={[styles.statusText, { color: item.estatus === 1 ? '#00FF41' : '#FF3131' }]}>
+                                                {item.estatus === 1 ? "ACTIVO" : "VENCIDO"}
+                                            </Text>
+                                        </DataTable.Cell>
+                                    </DataTable.Row>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    </ScrollView>
+
+                    <View style={styles.neonFooter}>
+                        <DataTable.Pagination
+                            page={page}
+                            numberOfPages={totalPages}
+                            onPageChange={handlePageChange}
+                            label={<Text style={{color: '#00E5FF'}}>{`${page * itemsPerPage + 1}-${Math.min((page + 1) * itemsPerPage, datosFinales.length)} de ${datosFinales.length}`}</Text>}
+                            showFastPaginationControls
+                            numberOfItemsPerPage={itemsPerPage}
+                            theme={{ colors: { onSurface: '#00E5FF' } }}
                         />
-
-                        {/* 2. EXPIRA (Créditos) / TIPO (Membresía) */}
-                        <HeaderFiltro 
-                            title={index === 0 ? "FECHA EXPIRACIÓN" : "TIPO MEMBRESÍA"} 
-                            id={index === 0 ? "fechaExpiracion" : "tipo"} 
-                        />
-
-                        {/* 3. PAQUETE (Créditos) / INICIO (Membresía) */}
-                        <HeaderFiltro 
-                            title={index === 0 ? "PAQUETE" : "FECHA DE INICIO"} 
-                            id={index === 0 ? "paquete" : "fechaInicio"} 
-                        />
-
-                        {/* 4. PAGO (Créditos) / VENCE (Membresía) */}
-                        <HeaderFiltro 
-                            title={index === 0 ? "FECHA DE PAGO" : "FECHA DE VENCIMIENTO"} 
-                            id={index === 0 ? "fechaPago" : "fechaFin"} 
-                        />
-
-                        {/* 5. ESTATUS */}
-                        <DataTable.Title numeric style={styles.statusCell}>
-                            <Text style={styles.headerLabel}>ESTATUS</Text>
-                        </DataTable.Title>
-
-                     
-                    </DataTable.Header>
-
-                    {itemsPaginados.map((item: any) => (
-                        <DataTable.Row key={item.id || item.folioMembresia || item.folioCredito} style={styles.row}>
-                            
-                            {/* 1. FOLIO */}
-                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                                <Text style={styles.cellText}>{index === 0 ? item.folioCredito : item.folioMembresia}</Text>
-                            </DataTable.Cell>
-
-                            {/* 2. FECHA EXPIRACIÓN / TIPO MEMBRESÍA */}
-                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                                <Text style={styles.cellText}>{index === 0 ? item.fechaExpiracion : item.tipo}</Text>
-                            </DataTable.Cell>
-
-                            {/* 3. PAQUETE / FECHA INICIO */}
-                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                                <Text style={styles.cellText}>{index === 0 ? item.paquete : item.fechaInicio}</Text>
-                            </DataTable.Cell>
-
-                            {/* 4. FECHA PAGO / FECHA FIN */}
-                            <DataTable.Cell numeric style={[styles.fixedCell, styles.borderRight]}>
-                                <Text style={styles.cellText}>{index === 0 ? item.fechaPago : item.fechaFin}</Text>
-                            </DataTable.Cell>
-
-                            {/* 5. ESTATUS */}
-                            <DataTable.Cell numeric style={styles.statusCell}>
-                                <Text style={{ 
-                                    color: (index === 0 ? item.estatus : item.estatus) === 1 ? '#2ecc71' : '#e74c3c', 
-                                    fontWeight: 'bold', fontSize: 12 
-                                }}>
-                                    {(index === 0 ? item.estatus : item.estatus) === 1 ? "ACTIVO" : "VENCIDO"}
-                                </Text>
-                            </DataTable.Cell>
-
-                          
-                            
-                        </DataTable.Row>
-                    ))}
-
-                </DataTable>
-            </ScrollView>
-
-            <View style={styles.footer}>
-                <DataTable.Pagination
-                    page={page}
-                    numberOfPages={Math.ceil(datosFinales.length / itemsPerPage)}
-                    onPageChange={(p) => setPage(p)}
-                    label={`${page * itemsPerPage + 1}-${Math.min((page + 1) * itemsPerPage, datosFinales.length)} de ${datosFinales.length}`}
-                    style={styles.pagination}
-                />
-            </View>
-        </View>
-      </Container>
-     </PaperProvider>
+                    </View>
+                </View>
+            </Container>
+        </PaperProvider>
     );
 }
 
 const styles = StyleSheet.create({
-    toolbar: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingHorizontal: 10, gap: 10 },
-    btnPage: { borderRadius: 8, height: 45, borderColor: '#ccc', justifyContent: 'center' },
-    search: { flex: 1, height: 45, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#eee', justifyContent: 'center' },
-    searchTextInput: { fontSize: 14, height: 45, marginTop: -8, textAlignVertical: 'center' }, 
-    tabLabel: { fontSize: 12, color: '#7f8c8d', fontWeight: '600' },
-    bigCount: { fontSize: 24, fontWeight: 'bold', color: '#2c3e50' },
-    tableWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e0e0e0', marginHorizontal: 10, marginBottom: 10 },
-    headerBg: { backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: '#e0e0e0', height: 50 },
-    headerLabel: { fontWeight: 'bold', color: '#333', fontSize: 13, textAlign: 'center' },
-    inputMini: { margin: 10, height: 40, fontSize: 12 },
-    row: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0', height: 55 },
-    cellText: {
-        fontSize: 11, // Bajamos un poco el tamaño (estaba en 12)
-        textAlign: 'center',
-        flexWrap: 'wrap', // Esto permite que el texto baje si no cabe
-        lineHeight: 14,   // Espaciado entre líneas si salta
-    },    
-    // Al usar numeric en el componente, estas propiedades de estilo ahora sí centran el contenido
-    fixedCell: { 
-        width: 140, 
-        justifyContent: 'center', 
-        alignItems: 'center' 
-    },
-    statusCell: { 
-        width: 100, 
-        justifyContent: 'center', 
-        alignItems: 'center' 
-    },
-    borderRight: { borderRightWidth: 1, borderRightColor: '#eee' },
-    footer: { borderTopWidth: 1, borderTopColor: '#e0e0e0', backgroundColor: '#fbfbfb' },
-    pagination: { justifyContent: 'flex-end', height: 50 }
+    mainContainer: { flex: 1, backgroundColor: '#000', paddingBottom: 10 },
+    neonCard: { backgroundColor: '#000', borderWidth: 2, borderColor: '#00E5FF', borderRadius: 15, margin: 10, elevation: 8, shadowColor: '#00E5FF', shadowOpacity: 0.5, shadowRadius: 10 },
+    neonTabLabel: { fontSize: 13, color: '#00E5FF', fontWeight: 'bold', letterSpacing: 1.5 },
+    neonBigCount: { fontSize: 26, fontWeight: '900', color: '#FFF' },
+    toolbar: { flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 10, gap: 10 },
+    neonBtnPage: { borderColor: '#00E5FF', borderWidth: 1.5, borderRadius: 10, backgroundColor: '#000', height: 45, justifyContent: 'center', minWidth: 90 },
+    neonSearch: { flex: 1, backgroundColor: '#111', borderRadius: 10, borderWidth: 1, borderColor: '#333', height: 45, justifyContent: 'center',},
+    neonTableWrapper: { flex: 1, backgroundColor: '#000', borderRadius: 15, borderWidth: 2, borderColor: '#00E5FF', marginHorizontal: 10, overflow: 'hidden' },
+    verticalScrollContainer: { maxHeight: SCREEN_HEIGHT * 0.45 }, 
+    neonHeader: { backgroundColor: '#000', borderBottomWidth: 2, borderBottomColor: '#00E5FF', height: 55 },
+    headerLabel: { fontWeight: 'bold', color: '#00E5FF', fontSize: 11, textAlign: 'center' },
+    neonRow: { borderBottomWidth: 1, borderBottomColor: '#1A1A1A', height: 55 },
+    neonCellText: { color: '#FFF', fontSize: 11, textAlign: 'center' },
+    statusText: { fontSize: 10, fontWeight: 'bold' },
+    fixedCell: { width: 120, justifyContent: 'center', alignItems: 'center' },
+    statusCell: { width: 90, justifyContent: 'center', alignItems: 'center' },
+    borderRight: { borderRightWidth: 1, borderRightColor: '#1A1A1A' },
+    neonFooter: { borderTopWidth: 2, borderTopColor: '#00E5FF', backgroundColor: '#000', paddingVertical: 5 },
+    inputMini: { backgroundColor: '#222', margin: 5, height: 35, fontSize: 12, color: '#FFF' }
 });

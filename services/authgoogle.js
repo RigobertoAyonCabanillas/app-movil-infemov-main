@@ -85,41 +85,28 @@ export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
 // --- FUNCIÓN DE SALIDA (Logout) ---
 export const cerrarSesionUniversal = async () => {
   try {
-    // 1. Avisar a tu API de C#
-    // IMPORTANTE: Buscamos ambos nombres por si acaso, para asegurar que el C# se entere
     const token = await AsyncStorage.getItem('token') || await AsyncStorage.getItem('userToken');
 
     if (token) {
-      try {
-        await fetch(`${BASE_AUTH_URL}/logout`, { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ Token: token })
-        });
-        console.log("✅ Notificación de logout enviada a C#");
-      } catch (e) {
-        console.log("⚠️ Servidor C# no disponible, continuando localmente...");
-      }
+      // Usamos .catch para que si el servidor C# no responde, no trabe el resto
+      fetch(`${BASE_AUTH_URL}/logout`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Token: token })
+      }).catch(() => console.log("⚠️ C# no disponible"));
     }
 
-    // 2. Cierre de Google (Fuerza bruta)
+    // Google SignOut con manejo de error para que no rompa el Sitemap
     try {
       await GoogleSignin.signOut();
-      console.log("✅ Google SignOut ejecutado");
-    } catch (googleError) {
-      console.log("ℹ️ Google ya estaba cerrado o no era necesario");
+    } catch (e) {
+      console.log("ℹ️ Google ya cerrado");
     }
 
-    // 3. Limpieza Total
-    // Esto borra 'token', 'refreshToken', 'usuarioId' y TODO lo demás.
     await AsyncStorage.clear();
-    console.log("🧹 Almacenamiento local limpiado por completo");
-
     return true; 
-    
   } catch (error) {
-    console.error("❌ Error crítico en logout:", error);
-    // Por seguridad, intentamos limpiar aunque haya error
+    console.error("❌ Error en logout:", error);
     await AsyncStorage.clear();
     return true; 
   }

@@ -5,53 +5,58 @@ import { useAuthService } from "@/servicesdb/authService";
 import { useRouter } from 'expo-router';
 import { UserContext } from '@/components/UserContext';
 
-export default function SugerenciasScreen() {
+// Definición de colores basada en tu UI actual
+const COLORS = {
+    bg: '#121212',
+    cardBg: '#1e1e1e',
+    accent: '#99bc1a', // Verde neón de tus botones e indicadores
+    textMain: '#ffffff',
+    textSecondary: '#aaaaaa',
+    stars: '#FFD700'
+};
 
+export default function SugerenciasScreen() {
     const { users } = useContext(UserContext);
-    
     const { enviarSugerenciaService } = useAuthService();
     const router = useRouter();
     
     const [comentario, setComentario] = useState('');
-    const [calificacion, setCalificacion] = useState(5); // Estado para la calificación (1-5)
+    const [calificacion, setCalificacion] = useState(5);
     const [loading, setLoading] = useState(false);
     const MAX_CHARS = 500;
 
     const handleEnviar = async () => {
-    if (comentario.trim().length < 5) {
-        Alert.alert("Aviso", "Por favor, escribe una sugerencia detallada.");
-        return;
-    }
+        if (comentario.trim().length < 5) {
+            Alert.alert("Aviso", "Por favor, escribe una sugerencia detallada.");
+            return;
+        }
 
-    // Obtenemos el ID del gimnasio del usuario actual
-    const gymId = users?.GimnasioActual || users?.gymId || users?.IdGym;
+        // Prioridad de IDs según tu estructura de contexto
+        const gymId = users?.GimnasioActual || users?.gymId || users?.IdGym;
 
-    setLoading(true);
-    try {
-        // Ahora enviamos 3 parámetros: comentario, calificación y el ID del gimnasio
-        const res = await enviarSugerenciaService(comentario, calificacion, gymId);
-        
-        Alert.alert("¡Gracias!", res.Message || "Recibimos tu opinión.");
-        setComentario('');
-        router.back();
-    } catch (error: any) {
-        Alert.alert("Error", error.message);
-    } finally {
-        setLoading(false);
-    }
+        setLoading(true);
+        try {
+            const res = await enviarSugerenciaService(comentario, calificacion, gymId);
+            Alert.alert("¡Gracias!", res.Message || "Recibimos tu opinión.");
+            setComentario('');
+            router.back();
+        } catch (error: any) {
+            Alert.alert("Error", error.message || "No se pudo enviar la sugerencia.");
+        } finally {
+            setLoading(false);
+        }
     };
 
-    // Renderizado de las estrellas
     const renderEstrellas = () => (
         <View style={styles.starsContainer}>
-            <Text style={styles.labelStars}>Califica tu experiencia:</Text>
+            <Text style={styles.labelStars}>¿Cómo fue tu experiencia?</Text>
             <View style={{ flexDirection: 'row' }}>
                 {[1, 2, 3, 4, 5].map((estrella) => (
                     <IconButton
                         key={estrella}
                         icon={estrella <= calificacion ? "star" : "star-outline"}
-                        iconColor={estrella <= calificacion ? "#FFD700" : "#888"}
-                        size={32}
+                        iconColor={estrella <= calificacion ? COLORS.stars : "#555"}
+                        size={36}
                         onPress={() => setCalificacion(estrella)}
                         style={{ margin: 0 }}
                     />
@@ -63,9 +68,9 @@ export default function SugerenciasScreen() {
     return (
         <KeyboardAvoidingView 
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-            style={{ flex: 1 }}
+            style={styles.container}
         >
-            <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={styles.content}>
                 <Text variant="headlineSmall" style={styles.title}>
                     Dinos qué piensas
                 </Text>
@@ -73,8 +78,7 @@ export default function SugerenciasScreen() {
                     Tu opinión nos ayuda a mejorar la experiencia en tu sucursal y en la aplicación.
                 </Text>
 
-                <Surface style={styles.card} elevation={1}>
-                    {/* Sección de Calificación */}
+                <Surface style={styles.card} elevation={2}>
                     {renderEstrellas()}
 
                     <TextInput
@@ -88,15 +92,18 @@ export default function SugerenciasScreen() {
                         numberOfLines={8}
                         textAlignVertical="top"
                         style={styles.input}
-                        activeOutlineColor="#99bc1a"
+                        textColor={COLORS.textMain}
+                        outlineColor="#333"
+                        activeOutlineColor={COLORS.accent}
+                        placeholderTextColor="#666"
                         placeholder="Ej: Me gustaría que hubiera más equipo de cardio..."
                     />
                     
                     <View style={styles.footerRow}>
-                        <HelperText type="info" visible={true}>
+                        <HelperText type="info" visible={true} style={{ color: COLORS.textSecondary }}>
                             Mínimo 5 caracteres
                         </HelperText>
-                        <Text style={[styles.counter, comentario.length >= MAX_CHARS && { color: 'red' }]}>
+                        <Text style={[styles.counter, comentario.length >= MAX_CHARS && { color: '#ff5252' }]}>
                             {comentario.length} / {MAX_CHARS}
                         </Text>
                     </View>
@@ -107,8 +114,9 @@ export default function SugerenciasScreen() {
                         loading={loading}
                         disabled={loading || comentario.trim().length < 5}
                         style={styles.button}
-                        buttonColor="#99bc1a"
-                        contentStyle={{ height: 48 }}
+                        buttonColor={COLORS.accent}
+                        textColor="#000" // Texto oscuro sobre botón neón para mejor contraste
+                        contentStyle={{ height: 50 }}
                     >
                         {loading ? "Enviando..." : "Enviar Comentarios"}
                     </Button>
@@ -121,54 +129,60 @@ export default function SugerenciasScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: COLORS.bg,
     },
     content: {
-        padding: 20,
-        paddingTop: 10,
+        padding: 24,
+        paddingTop: 20,
     },
     title: {
         fontWeight: 'bold',
-        color: '#1a1a1a',
+        color: COLORS.textMain,
         marginBottom: 8,
     },
     subtitle: {
-        color: '#666',
-        marginBottom: 24,
+        color: COLORS.textSecondary,
+        marginBottom: 30,
         lineHeight: 22,
     },
     card: {
-        padding: 16,
-        borderRadius: 16,
-        backgroundColor: '#fff',
+        padding: 20,
+        borderRadius: 24,
+        backgroundColor: COLORS.cardBg,
     },
     starsContainer: {
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: 20,
     },
     labelStars: {
-        fontSize: 14,
-        color: '#333',
-        marginBottom: 4,
-        fontWeight: '500'
+        fontSize: 16,
+        color: COLORS.textMain,
+        marginBottom: 8,
+        fontWeight: '600'
     },
     input: {
-        backgroundColor: '#fff',
+        backgroundColor: COLORS.cardBg,
         minHeight: 180,
+        fontSize: 16,
     },
     footerRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 16,
+        marginTop: 4,
+        marginBottom: 20,
     },
     counter: {
         fontSize: 12,
-        color: '#888',
+        color: COLORS.textSecondary,
         marginRight: 8,
     },
     button: {
-        borderRadius: 10,
-        elevation: 2,
+        borderRadius: 14,
+        elevation: 4,
+        shadowColor: COLORS.accent,
+        shadowOpacity: 0.3,
+        shadowOffset: { width: 0, height: 4 },
+        shadowRadius: 5,
     },
 });

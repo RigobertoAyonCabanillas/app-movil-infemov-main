@@ -4,10 +4,13 @@ import { Text, List, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { UserContext } from "@/components/UserContext";
 
+// NOTA: Quitamos el import de arriba para evitar que rompa el Sitemap.
+// La función se cargará dinámicamente al presionar el botón.
+
 const COLORS = {
   bg: '#000000',
   cardBg: '#121212',
-  accent: '#39FF14', // Tu verde neón
+  accent: '#39FF14',
   textMain: '#FFFFFF',
   textSub: '#A0A0A0',
   divider: '#2C2C2C',
@@ -19,7 +22,7 @@ const SettingItem = ({ title, icon, onPress, textColor, disabled }: any) => (
   <TouchableOpacity onPress={onPress} disabled={disabled}>
     <List.Item
       title={title}
-      titleStyle={[styles.itemTitle, { color: disabled ? COLORS.disabled : (textColor || COLORS.textMain) }]}
+      titleStyle={[styles.itemTitle, { color: textColor || COLORS.textMain }]}
       left={props => (
         <List.Icon 
           {...props} 
@@ -42,7 +45,7 @@ export default function AjustesScreen() {
 
   const handleLogout = async () => {
     try {
-      // CARGA DINÁMICA: Evita que el archivo se rompa al cargar en el iPhone
+      // CARGA DINÁMICA: Esto evita que el archivo se rompa al cargar la pantalla
       const { cerrarSesionUniversal } = await import('../../services/authgoogle');
       
       await cerrarSesionUniversal(); 
@@ -50,7 +53,7 @@ export default function AjustesScreen() {
       if (setUsers) setUsers(null);
       router.replace("/");
     } catch (error) {
-      console.log("Error en logout:", error);
+      console.log("Error en logout, redirigiendo igual:", error);
       if (setUsers) setUsers(null);
       router.replace("/");
     }
@@ -91,15 +94,6 @@ export default function AjustesScreen() {
           title="Envíanos tus sugerencias" 
           icon="message-draw" 
           onPress={() => router.push('/(settings)/sugerencias')} 
-        />
-        <Divider style={styles.divider} />
-
-        {/* Opción deshabilitada con diseño neón apagado */}
-        <SettingItem 
-          title="Cambiar el país" 
-          icon="earth" 
-          onPress={null} 
-          disabled={true} 
         />
         <Divider style={styles.divider} />
 

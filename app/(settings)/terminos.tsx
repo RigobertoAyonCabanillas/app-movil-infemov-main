@@ -1,7 +1,17 @@
 import React from 'react';
 import { StyleSheet, ScrollView, View } from 'react-native';
-import { Text, Divider, Button } from 'react-native-paper';
+import { Text, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+
+// Paleta de colores consistente con tu UI de Dark Mode
+const COLORS = {
+    bg: '#121212',
+    cardBg: '#1e1e1e',
+    accent: '#99bc1a', // Tu verde característico
+    textMain: '#ffffff',
+    textSecondary: '#aaaaaa',
+    border: '#333333'
+};
 
 const TerminosScreen = () => {
     const router = useRouter();
@@ -23,9 +33,11 @@ const TerminosScreen = () => {
                 </Text>
 
                 <Text style={styles.sectionTitle}>2. Definiciones</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Software:</Text> Sistema web de gestión digital denominado "FIXSKALE".</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Cliente:</Text> Persona moral o física con actividad empresarial con licencia de uso.</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Usuario:</Text> Persona física que accede por invitación o voluntad propia.</Text>
+                <View style={styles.bulletContainer}>
+                    <Text style={styles.bullet}>• <Text style={styles.bold}>Software:</Text> Sistema web de gestión digital denominado "FIXSKALE".</Text>
+                    <Text style={styles.bullet}>• <Text style={styles.bold}>Cliente:</Text> Persona moral o física con actividad empresarial con licencia de uso.</Text>
+                    <Text style={styles.bullet}>• <Text style={styles.bold}>Usuario:</Text> Persona física que accede por invitación o voluntad propia.</Text>
+                </View>
 
                 <Text style={styles.sectionTitle}>4. Condiciones de Uso</Text>
                 <Text style={styles.paragraph}>
@@ -39,7 +51,14 @@ const TerminosScreen = () => {
             </ScrollView>
 
             <View style={styles.footer}>
-                <Button mode="contained" onPress={() => router.back()} buttonColor="#99bc1a" style={styles.button}>
+                <Button 
+                    mode="contained" 
+                    onPress={() => router.back()} 
+                    buttonColor={COLORS.accent} 
+                    textColor="#000"
+                    style={styles.button}
+                    contentStyle={{ height: 48 }}
+                >
                     Cerrar
                 </Button>
             </View>
@@ -48,17 +67,67 @@ const TerminosScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    mainContainer: { flex: 1, backgroundColor: '#fff' },
-    container: { flex: 1 },
-    content: { padding: 20, paddingBottom: 40 },
-    updateText: { fontSize: 12, color: '#666', marginBottom: 10 },
-    title: { fontSize: 20, fontWeight: 'bold', color: '#FF3CAC', marginBottom: 15 },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', marginTop: 20, marginBottom: 5, color: '#333' },
-    paragraph: { fontSize: 14, lineHeight: 20, color: '#444', textAlign: 'justify', marginBottom: 10 },
-    bullet: { fontSize: 14, marginLeft: 10, marginBottom: 8, color: '#444' },
-    bold: { fontWeight: 'bold' },
-    footer: { padding: 15, borderTopWidth: 1, borderColor: '#eee' },
-    button: { borderRadius: 8 }
+    mainContainer: { 
+        flex: 1, 
+        backgroundColor: COLORS.bg 
+    },
+    container: { 
+        flex: 1 
+    },
+    content: { 
+        padding: 24, 
+        paddingBottom: 40 
+    },
+    updateText: { 
+        fontSize: 12, 
+        color: COLORS.textSecondary, 
+        marginBottom: 10,
+        fontStyle: 'italic' 
+    },
+    title: { 
+        fontSize: 22, 
+        fontWeight: 'bold', 
+        color: COLORS.accent, // Cambiado de rosa a tu verde acento
+        marginBottom: 15 
+    },
+    sectionTitle: { 
+        fontSize: 17, 
+        fontWeight: 'bold', 
+        marginTop: 25, 
+        marginBottom: 10, 
+        color: COLORS.textMain 
+    },
+    paragraph: { 
+        fontSize: 14, 
+        lineHeight: 22, 
+        color: COLORS.textSecondary, 
+        textAlign: 'justify', 
+        marginBottom: 12 
+    },
+    bulletContainer: {
+        marginVertical: 10
+    },
+    bullet: { 
+        fontSize: 14, 
+        lineHeight: 22,
+        marginLeft: 10, 
+        marginBottom: 10, 
+        color: COLORS.textSecondary 
+    },
+    bold: { 
+        fontWeight: 'bold', 
+        color: COLORS.textMain 
+    },
+    footer: { 
+        padding: 20, 
+        borderTopWidth: 1, 
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.bg
+    },
+    button: { 
+        borderRadius: 12,
+        elevation: 2
+    }
 });
 
 export default TerminosScreen;

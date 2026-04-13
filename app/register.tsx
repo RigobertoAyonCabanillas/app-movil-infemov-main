@@ -1,420 +1,303 @@
-import { router } from "expo-router";
-import React, { useContext, useState, useEffect, useRef } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useContext, useState } from "react";
 import { UserContext } from "../components/UserContext";
-import { BotonMostrar, Container, FechaRow, FieldGroup, Fields, InputFechaCorta, PickerContainer, StyledPicker, SubmitF, TextInputEntrada, TextoBoton, Title, MultiAccount } from "../styles/registerStyles";
 import { useAuthService } from "@/servicesdb/authService";
 import * as Application from 'expo-application';
-import { Alert, Platform, ScrollView, KeyboardAvoidingView, TouchableOpacity, View, Text, Image, Modal,  } from 'react-native';
+import { 
+  Alert, Platform, ScrollView, KeyboardAvoidingView, 
+  TouchableOpacity, View, Text, Image, Modal, StyleSheet, 
+  Dimensions, TextInput, ActivityIndicator 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Picker } from "@react-native-picker/picker";// Fecha Nacimiento
-import DateTimePicker from '@react-native-community/datetimepicker';//Rueda de fecha de namcimiento
-//Libreriar para el numero de celular - MaskInput y CountryPicker
+import { Picker } from "@react-native-picker/picker";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import MaskInput from 'react-native-mask-input';
-import CountryPicker, { CountryCode, Country, Flag } from 'react-native-country-picker-modal';
-import { validarFolioAPI } from "@/services/api";
-//Registro con Google
+import CountryPicker, { CountryCode, Country } from 'react-native-country-picker-modal';
 import BtnLoginGoogle from "../components/BtnLoginGoogle";
-import { FontAwesome } from '@expo/vector-icons'; // Asegúrate de tener esta importación
-import { TextInput } from "react-native-paper";
-import { useLocalSearchParams } from 'expo-router'; // Asegúrate de importar esto
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function Registro() {
+  const { setUsers } = useContext(UserContext);
+  const params = useLocalSearchParams();
+  const { registrarUsuarioProceso } = useAuthService();
 
-  const {users, setUsers} = useContext(UserContext);//Importacionde los datos desde UserContext Compartidos
+  // --- ESTADOS ---
   const [nombre, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
-  const [apellidoPaterno, setLastNameP] = useState("")
-  const [apellidoMaterno, setLastNameM] = useState("")
-  const [telefono, setNumberPhone] = useState("")
+  const [apellidoPaterno, setLastNameP] = useState("");
+  const [apellidoMaterno, setLastNameM] = useState("");
+  const [telefono, setNumberPhone] = useState("");
   const [secure, setSecure] = useState(true);
-  const [esEstudiante, setEsEstudiante] = useState<number>(0); // 0: No, 1: Sí
+  const [esEstudiante, setEsEstudiante] = useState<number>(0);
+  const [loading, setLoading] = useState(false);
 
-//Celular
-const [countryCode, setCountryCode] = useState<CountryCode>('MX');
-const [showCountryPicker, setShowCountryPicker] = useState(false);
-const [callingCode, setCallingCode] = useState('52');
-const [telefonoLimpio, setTelefonoLimpio] = useState(''); // Solo números
-// Formato: (644) 123-4567
-const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
-const onSelect = (country: Country) => {
-  setCountryCode(country.cca2);
-  setCallingCode(country.callingCode[0]);
-};
+  // --- CELULAR ---
+  const [countryCode, setCountryCode] = useState<CountryCode>('MX');
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [callingCode, setCallingCode] = useState('52');
+  const [telefonoLimpio, setTelefonoLimpio] = useState('');
+  const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
 
-// Estados para los valores de fecha
-const [date, setDate] = useState(new Date());
-const [show, setShow] = useState(false);
-const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
+  // --- FECHA ---
+  const [date, setDate] = useState(new Date(2000, 0, 1)); 
+  const [show, setShow] = useState(false);
+  const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
 
-//Folio - superUsuario
-const params = useLocalSearchParams(); // Recibimos lo que mande el Login
-// Ahora el gymSelected y nombreGimnasio vienen de los parámetros
-const [gymSelected, setGymSelected] = useState<number | null>(Number(params.gymId) || null);
-const [nombreGimnasio, setNombreGimnasio] = useState(params.gymNombre || "");
+  // --- GYM DATA ---
+  const [gymSelected] = useState<number | null>(Number(params.gymId) || null);
+  const [nombreGimnasio] = useState(params.gymNombre || "");
 
+  const onSelect = (country: Country) => {
+    setCountryCode(country.cca2);
+    setCallingCode(country.callingCode[0]);
+  };
 
-//Estados de la base de datos SQLlite
-const { registrarUsuarioProceso } = useAuthService();
-    
- //Funcion principal del formulario
- const handlRegister = async () => {
-  //  Validación de campos existentes
-  if (!nombre || !email || !password || !apellidoPaterno || !apellidoMaterno || !telefono) {
-    alert("Todos los campos son obligatorios");
-    return;
-  }
+  const validarEmail = (email: string) => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
+  };
 
-  // 2. NUEVA VALIDACIÓN: Complejidad de Contraseña (Igual a tu Backend)
-  const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-  
-  if (password.includes(" ") || !complejidadRegex.test(password)) {
-    alert("La contraseña no cumple con los requisitos de seguridad. Debe tener mínimo 8 caracteres, una mayúscula, una minúscula, un número y no contener espacios.");
-    return;
-  }
-
-  //  Validación de la opción de Estudiante
-  if (esEstudiante === 0) {
-    alert("Por favor, selecciona si eres estudiante");
-    return;
-  }
-
-  if (!validarEmail(email)) {
-    alert("El correo electrónico no es válido");
-    return;
-  }
-
-  try {
-    //  OBTENER DEVICE ID (Lógica corregida con await)
-    let deviceId: string | null = null;
-
-    if (Platform.OS === 'android') {
-        // Cambiamos Application.androidId por el método que te pide VS Code
-        deviceId = await Application.getAndroidId(); 
-    } else {
-        deviceId = await Application.getIosIdForVendorAsync();
+  const handlRegister = async () => {
+    if (!nombre || !email || !password || !apellidoPaterno || !apellidoMaterno || !telefonoLimpio) {
+      Alert.alert("Atención", "Todos los campos son obligatorios");
+      return;
     }
 
-    //Fecha de nacimiento
-    const fechaFinal = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
-    //Limpiar () en numero de celular
-    const numeroLimpio = telefono.replace(/\D/g, ''); // Quita ( ) y -
+    const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (password.includes(" ") || !complejidadRegex.test(password)) {
+      Alert.alert("Seguridad", "La contraseña debe tener 8 caracteres, una mayúscula, una minúscula y un número.");
+      return;
+    }
 
-    //  Crear el objeto con el campo deviceId incluido
-    // Importante: Los nombres de las propiedades deben coincidir con lo que espera tu API .NET
-    const NewUser = { 
-      nombre, 
-      apellidoPaterno, 
-      apellidoMaterno,
-      email,
-      password, 
-      telefono: `+${callingCode}${telefonoLimpio}`, // Resultado: +52 6441234567 
-      deviceId, // Ahora ya tiene el valor del await anterior
-      estudiante: esEstudiante === 1, // <--- Enviamos true si es 1, false si es 2
-      fechaNacimiento: fechaFinal, // Así llega como string "DD/MM/AAAA" a tu API
-      gymId: gymSelected // Este es el ID que nos dio la API al validar el folio
-    };
+    if (esEstudiante === 0) {
+      Alert.alert("Atención", "Selecciona si eres estudiante");
+      return;
+    }
 
-    // Proceso de Registro (SQLite + Cifrado + API)
-    // Asegúrate que en authService.ts, registrarUsuarioProceso acepte este objeto 'NewUser'
-    await registrarUsuarioProceso(NewUser);
+    if (!validarEmail(email)) {
+        Alert.alert("Atención", "El correo electrónico no es válido");
+        return;
+    }
 
-    //  Actualizar Contexto y Navegar
-    setUsers(NewUser);
-    alert("Registro exitoso");
-    router.replace("/"); 
+    try {
+      setLoading(true);
+      let deviceId = Platform.OS === 'android' ? await Application.getAndroidId() : await Application.getIosIdForVendorAsync();
+      const fechaFinal = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
 
-  } catch (error) {
-    console.error("Error en el proceso de registro:", error);
-    alert("Error en el proceso de registro. Inténtalo de nuevo.");
-  }
-};
+      const NewUser = { 
+        nombre, 
+        apellidoPaterno, 
+        apellidoMaterno,
+        email,
+        password, 
+        telefono: `+${callingCode}${telefonoLimpio}`,
+        deviceId,
+        estudiante: esEstudiante === 1,
+        fechaNacimiento: fechaFinal,
+        gymId: gymSelected
+      };
 
-  //Fecha de nacimiento
+      await registrarUsuarioProceso(NewUser);
+      setUsers(NewUser);
+      Alert.alert("Éxito", "Registro completado correctamente");
+      router.replace("/"); 
+    } catch (error) {
+      console.error("Error en registro:", error);
+      Alert.alert("Error", "No se pudo completar el registro.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onData = (event: any, selectedDate?: Date) => {
-  // En Android, si el usuario cancela, event.type es 'dismissed'
-  if (event.type === 'dismissed') {
+    if (event.type === 'dismissed') {
+      setShow(false);
+      return;
+    }
+    const currentDate = selectedDate || date;
     setShow(false);
-    return;
-  }
+    setDate(currentDate);
+    let f = currentDate.getDate().toString().padStart(2, '0') + '/' + 
+            (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
+            currentDate.getFullYear();
+    setFechaTexto(f);
+  };
 
-  const currentDate = selectedDate || date;
-  setShow(false); // Cerramos el picker
-  setDate(currentDate);
-
-  let f = currentDate.getDate().toString().padStart(2, '0') + '/' + 
-          (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
-          currentDate.getFullYear();
-  setFechaTexto(f);
-};
-
- //Funcion para validar correo correctamente
- const validarEmail = (email: string) => 
-    { const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; //@antes, @despues, punto(.) despues(.mx ejemplo)
-    return regex.test(email); };
-
-  //JSX
   return (
-  <KeyboardAvoidingView 
-    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    style={{ flex: 1, backgroundColor: '#fff' }}
-  >
-    <ScrollView 
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ flexGrow: 1, paddingBottom: 50 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <Container>          
-            <>
-            <Title>Registrarse</Title>
-            
-            <FieldGroup>
-              <MultiAccount>También Puede Registrarse Con:</MultiAccount>
-              <BtnLoginGoogle folioExterno={gymSelected} />
-              <Text style={{ color: '#7da854', fontWeight: 'bold', marginTop: 10 }}>
-                Gimnasio: {nombreGimnasio}
-              </Text>
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Nombre</Fields>
-              <TextInputEntrada onChangeText={setUser} placeholder="Tu nombre" />
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Apellido Paterno</Fields>
-              <TextInputEntrada onChangeText={setLastNameP} placeholder="Apellido Paterno" />
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Apellido Materno</Fields>
-              <TextInputEntrada 
-              keyboardType="default"
-              autoCorrect={false}
-              onChangeText={setLastNameM} placeholder="Apellido Materno" />
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Contraseña</Fields>
-              <TextInputEntrada 
-                secureTextEntry={secure}
-                autoCapitalize="none"
-                onChangeText={setPassword}
-                placeholder="********"
-                underlineColorAndroid="transparent"
-              />
-              
-              {/* El botón ahora es pequeño y se alinea a la derecha automáticamente */}
-              <BotonMostrar onPress={() => setSecure(!secure)}>
-                <TextoBoton>{secure ? "MOSTRAR" : "OCULTAR"}</TextoBoton> 
-              </BotonMostrar>
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Email</Fields>
-              <TextInputEntrada 
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="ejemplo@correo.com"
-              />
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Número de Teléfono</Fields>
-              <View style={{ flexDirection: 'row', width: '100%', backgroundColor: '#f2f2f2', borderRadius: 8, height: 55, alignItems: 'center', overflow: 'hidden' }}>
-                
-                {/* BOTÓN DISPARADOR (Mantenemos tu diseño verde) */}
-                <TouchableOpacity 
-                  onPress={() => setShowCountryPicker(true)} 
-                  style={{ 
-                    backgroundColor: '#7da854', 
-                    paddingHorizontal: 12, 
-                    height: '100%', 
-                    justifyContent: 'center', 
-                    alignItems: 'center',
-                    flexDirection: 'row', 
-                    borderTopLeftRadius: 8,
-                    borderBottomLeftRadius: 8
-                  }}
-                >
-                  <View style={{ marginRight: 8 }}>
-                    <Image
-                      source={{ uri: `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png` }}
-                      style={{ width: 25, height: 18, borderRadius: 2 }}
-                      resizeMode="contain"
-                    />
-                  </View>
-                  <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
-                    +{callingCode}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Input para el resto del teléfono (TU MASKINPUT ACTUAL) */}
-                <MaskInput
-                  value={telefono}
-                  onChangeText={(masked, unmasked) => {
-                    setNumberPhone(masked);
-                    setTelefonoLimpio(unmasked);
-                  }}
-                  mask={phoneMask}
-                  keyboardType="numeric"
-                  style={{ flex: 1, paddingHorizontal: 15, fontSize: 16, color: '#333' }}
-                  placeholderTextColor="#999"
-                  placeholder="(555) 555-5555"
-                />
-              </View>
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>¿Eres estudiante?</Fields>
-              <View style={{ width: '100%', borderBottomWidth: 1, borderBottomColor: '#ccc' }}>
-                <Picker
-                  selectedValue={esEstudiante}
-                  onValueChange={(itemValue) => setEsEstudiante(itemValue)}
-                  style={{ height: 50, width: '100%' }}
-                >
-                  <Picker.Item label="Selecciona una opción..." value={0} color="#999" />
-                  <Picker.Item label="Sí, soy estudiante" value={1} />
-                  <Picker.Item label="No, no soy estudiante" value={2} />
-                </Picker>
-              </View>
-            </FieldGroup>
-
-            <FieldGroup>
-              <Fields>Fecha de Nacimiento</Fields>
-              {/* Agregamos una View para contener el área de clic */}
-              <View style={{ width: '100%', height: 60, marginBottom: 10 }}> 
-                <TouchableOpacity 
-                  onPress={() => setShow(true)}
-                  style={{ flex: 1 }} // El toque solo vivirá dentro de estos 60px de alto
-                >
-                  <View pointerEvents="none">
-                    <TextInput
-                      placeholder="Selecciona tu fecha"
-                      value={fechaTexto}
-                      editable={false}
-                      style={{
-                        backgroundColor: '#F0F2F5',
-                        height: 55,
-                        borderRadius: 10,
-                        paddingHorizontal: 15,
-                        fontSize: 16,
-                        color: fechaTexto === "Selecciona tu fecha" ? '#999' : '#000',
-                        borderWidth: 1,
-                        borderColor: '#E1E4E8',
-                      }}
-                    />
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </FieldGroup>
-
-            <FieldGroup>
-              <SubmitF onPress={handlRegister} style={{ marginTop: 10 }}>
-                <TextoBoton>REGISTRAR</TextoBoton> 
-              </SubmitF>
-            </FieldGroup>
-          </>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.mainContainer}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         
-      </Container>  
-    </ScrollView>
-
-    {/* --- MODAL PARA SELECCIONAR PAÍS --- */}
-  <Modal
-    visible={showCountryPicker}
-    animationType="slide"
-    transparent={false}
-    onRequestClose={() => setShowCountryPicker(false)}
-  >
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      
-      {/* 1. TU ENCABEZADO CON DISEÑO (Ahora dentro del Modal) */}
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: Platform.OS === 'android' ? 20 : 0, 
-        backgroundColor: '#fff',
-        paddingBottom: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-        elevation: 2
-      }}>
-        <TouchableOpacity 
-          onPress={() => setShowCountryPicker(false)}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: '#F0F2F5',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-        >
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#333' }}>✕</Text>
-        </TouchableOpacity>
-        <Text style={{ marginLeft: 15, fontSize: 18, fontWeight: 'bold', color: '#000' }}>
-          Selecciona tu país
-        </Text>
-      </View>
-
-      {/* 2. EL PICKER (Sin su propia X, usando la nuestra) */}
-      <CountryPicker
-        countryCode={countryCode}
-        visible={showCountryPicker}
-        onSelect={(country) => {
-          onSelect(country);
-          setShowCountryPicker(false);
-        }}
-        onClose={() => setShowCountryPicker(false)}
-        withFilter
-        withModal={false}
-        withAlphaFilter={false}
-        renderFlagButton={() => null}
-        
-        // ESTO QUITA LA "X" VISUALMENTE SIN DAR ERRORES
-        theme={{
-          onBackgroundTextColor: 'transparent', // Hace que el icono X sea invisible
-          backgroundColor: '#ffffff',
-        }}
-
-        filterProps={{
-        autoFocus: true,
-        placeholder: 'Busca tu país...',
-        style: {
-          height: 48,
-          backgroundColor: '#F0F2F5',
-          borderRadius: 12,
-          color: '#000',
-          marginTop: 10,
-          width: '100%',           // Aumentamos el ancho para que al moverlo no se acorte
+        <View style={styles.neonPanel}>
+          <Text style={styles.neonTitle}>Registrarse</Text>
           
-          // ESTO MUEVE EL TEXTO AL LUGAR DE LA X OCULTA
-          marginLeft: -65,         // Empuja el bloque a la izquierda sobre la X
-          paddingLeft: 50,         // Ajusta este número para centrar el texto en el cuadro
-        }
-      }}
-      />
-    </SafeAreaView>
-  </Modal>
+          <View style={styles.googleSection}>
+            <Text style={styles.subText}>También puedes registrarte con:</Text>
+            <BtnLoginGoogle folioExterno={gymSelected} />
+            <View style={styles.gymBadge}>
+              <Text style={styles.gymBadgeText}>Gimnasio: {nombreGimnasio}</Text>
+            </View>
+          </View>
 
-      {/* AQUÍ VA EL PICKER */}
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Nombre(s)</Text>
+            <TextInput style={styles.neonInput} onChangeText={setUser} placeholder="Tu nombre" placeholderTextColor="#444" />
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.inputWrapper, { flex: 1, marginRight: 10 }]}>
+              <Text style={styles.label}>A. Paterno</Text>
+              <TextInput style={styles.neonInput} onChangeText={setLastNameP} placeholder="Paterno" placeholderTextColor="#444" />
+            </View>
+            <View style={[styles.inputWrapper, { flex: 1 }]}>
+              <Text style={styles.label}>A. Materno</Text>
+              <TextInput style={styles.neonInput} onChangeText={setLastNameM} placeholder="Materno" placeholderTextColor="#444" />
+            </View>
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Correo Electrónico</Text>
+            <TextInput style={styles.neonInput} keyboardType="email-address" autoCapitalize="none" onChangeText={setEmail} placeholder="ejemplo@correo.com" placeholderTextColor="#444" />
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Contraseña</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput secureTextEntry={secure} style={styles.passwordInput} onChangeText={setPassword} placeholder="********" placeholderTextColor="#444" />
+              <TouchableOpacity onPress={() => setSecure(!secure)}>
+                <Text style={styles.showHideText}>{secure ? "MOSTRAR" : "OCULTAR"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Número de Teléfono</Text>
+            <View style={styles.phoneContainer}>
+              <TouchableOpacity onPress={() => setShowCountryPicker(true)} style={styles.countryBtn}>
+                <Image source={{ uri: `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png` }} style={styles.flag} />
+                <Text style={styles.callingCode}>+{callingCode}</Text>
+              </TouchableOpacity>
+              <MaskInput
+                value={telefono}
+                onChangeText={(masked, unmasked) => { setNumberPhone(masked); setTelefonoLimpio(unmasked); }}
+                mask={phoneMask}
+                keyboardType="numeric"
+                style={styles.phoneInput}
+                placeholder="(644) 000-0000"
+                placeholderTextColor="#444"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Fecha de Nacimiento</Text>
+            <TouchableOpacity onPress={() => setShow(true)} style={styles.dateBtn}>
+              <Text style={[styles.dateText, fechaTexto === "Selecciona tu fecha" && { color: '#444' }]}>{fechaTexto}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>¿Eres estudiante?</Text>
+            <View style={styles.pickerContainer}>
+              <Picker selectedValue={esEstudiante} onValueChange={(v) => setEsEstudiante(v)} style={{ color: '#fff' }} dropdownIconColor="#00E5FF">
+                <Picker.Item label="Selecciona una opción..." value={0} color="#444" />
+                <Picker.Item label="Sí, soy estudiante" value={1} />
+                <Picker.Item label="No soy estudiante" value={2} />
+              </Picker>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.submitBtn} onPress={handlRegister} disabled={loading}>
+            {loading ? <ActivityIndicator color="#00E5FF" /> : <Text style={styles.submitBtnText}>REGISTRARSE</Text>}
+          </TouchableOpacity>
+
+          {/* --- BOTÓN PARA REGRESAR AL LOGIN --- */}
+          <TouchableOpacity 
+            style={styles.backToLoginBtn} 
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backToLoginText}>
+              ¿Ya tienes cuenta? <Text style={styles.backToLoginHighlight}>Inicia Sesión</Text>
+            </Text>
+          </TouchableOpacity>
+
+        </View>
+      </ScrollView>
+
+      <Modal visible={showCountryPicker} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.closeModalBtn}>
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Selecciona tu país</Text>
+          </View>
+          <CountryPicker
+            countryCode={countryCode}
+            visible={showCountryPicker}
+            onSelect={(c) => { onSelect(c); setShowCountryPicker(false); }}
+            withFilter
+            withAlphaFilter
+            theme={{ backgroundColor: '#000', onBackgroundTextColor: '#fff', fontSize: 16 }}
+          />
+        </SafeAreaView>
+      </Modal>
+
       {show && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          // 'spinner' es mucho más compacto y no rompe el diseño de tu app
-          display="spinner" 
-          maximumDate={new Date()}
-          onChange={onData}
-          // Opcional: Esto ayuda a que en algunos Android se vea mejor el fondo
-          themeVariant="light" 
-        />
+        <DateTimePicker value={date} mode="date" display="spinner" maximumDate={new Date()} onChange={onData} />
       )}
- 
-  </KeyboardAvoidingView> 
-);
+    </KeyboardAvoidingView>
+  );
 }
+
+const styles = StyleSheet.create({
+  mainContainer: { flex: 1, backgroundColor: '#000' },
+  scrollContainer: { flexGrow: 1, paddingVertical: 40, alignItems: 'center' },
+  neonPanel: {
+    width: SCREEN_WIDTH * 0.9,
+    backgroundColor: '#0A0A0A',
+    borderRadius: 25,
+    padding: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.2)',
+  },
+  neonTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#00E5FF',
+    textAlign: 'center',
+    marginBottom: 20,
+    textShadowColor: 'rgba(0, 229, 255, 0.5)',
+    textShadowRadius: 10,
+  },
+  googleSection: { alignItems: 'center', marginBottom: 25 },
+  subText: { color: '#666', marginBottom: 10, fontSize: 13 },
+  gymBadge: { marginTop: 15, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 15, backgroundColor: 'rgba(0, 229, 255, 0.1)', borderWidth: 1, borderColor: '#00E5FF' },
+  gymBadgeText: { color: '#00E5FF', fontSize: 12, fontWeight: 'bold' },
+  inputWrapper: { width: '100%', marginBottom: 18 },
+  row: { flexDirection: 'row', width: '100%' },
+  label: { color: '#00E5FF', fontSize: 12, marginBottom: 6, marginLeft: 4, fontWeight: '600' },
+  neonInput: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', color: '#fff', paddingHorizontal: 15 },
+  passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
+  passwordInput: { flex: 1, height: 50, color: '#fff', paddingHorizontal: 15 },
+  showHideText: { color: '#00E5FF', fontSize: 10, fontWeight: 'bold', paddingRight: 15 },
+  phoneContainer: { flexDirection: 'row', height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', overflow: 'hidden' },
+  countryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#111', borderRightWidth: 1, borderRightColor: 'rgba(0, 229, 255, 0.1)' },
+  flag: { width: 25, height: 18, marginRight: 8, borderRadius: 2 },
+  callingCode: { color: '#00E5FF', fontWeight: 'bold' },
+  phoneInput: { flex: 1, color: '#fff', paddingHorizontal: 15 },
+  dateBtn: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', justifyContent: 'center', paddingHorizontal: 15 },
+  dateText: { color: '#fff' },
+  pickerContainer: { backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', overflow: 'hidden' },
+  submitBtn: { width: '100%', height: 55, backgroundColor: '#000', borderRadius: 15, borderWidth: 2, borderColor: '#00E5FF', justifyContent: 'center', alignItems: 'center', marginTop: 10 },
+  submitBtnText: { color: '#00E5FF', fontSize: 16, fontWeight: 'bold', letterSpacing: 2 },
+  backToLoginBtn: { marginTop: 25, paddingVertical: 10, alignItems: 'center', width: '100%' },
+  backToLoginText: { color: '#666', fontSize: 14, fontWeight: '500' },
+  backToLoginHighlight: { color: '#00E5FF', fontWeight: 'bold', textDecorationLine: 'underline' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
+  closeModalBtn: { width: 35, height: 35, borderRadius: 10, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 15 }
+});
 
 

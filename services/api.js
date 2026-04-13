@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.0.103:5254/api';
+const API_URL = 'http://100.116.49.102:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -43,24 +43,31 @@ export const desencriptarDatos = (datosCifrados) => {
   }
 };
 
-//Registro local
+// Registro local modificado para evitar errores de undefined
 export const enviarDatosRegistro = async (datos) => {
   try {
-    // 1. Convertimos el objeto dinámico a string JSON
-    const jsonString = JSON.stringify(datos);
+    // 1. Validación preventiva de los datos de entrada
+    if (!datos) {
+      throw new Error("No se proporcionaron datos para el registro");
+    }
 
-    // 2. Ciframos usando AES
-    // Usamos el formato Utf8 para la llave para asegurar compatibilidad con .NET
+    const jsonString = JSON.stringify(datos);
     const key = CryptoJS.enc.Utf8.parse(SECRET_KEY);
+
+    // 2. Ciframos con validación
     const cifrado = CryptoJS.AES.encrypt(jsonString, key, {
-      mode: CryptoJS.mode.ECB, // El modo debe coincidir con el de C#
-      padding: CryptoJS.pad.Pkcs7 //Verifica que llegue la misma dimension a C# de 16 128 bits
+      mode: CryptoJS.mode.ECB,
+      padding: CryptoJS.pad.Pkcs7
     });
 
-    // 3. Obtenemos el resultado en Base64 (es lo más fácil de recibir en .NET)
-    const datosParaEnviar = cifrado.toString();
-    console.log(datosParaEnviar)
+    // Si 'cifrado' por alguna razón falla, evitamos el .toString()
+    if (!cifrado || !cifrado.toString) {
+      throw new Error("Error crítico: El objeto de cifrado no se generó correctamente");
+    }
 
+    const datosParaEnviar = cifrado.toString();
+
+    // 3. Petición Fetch
     const response = await fetch(`${API_URL}/register`, {
       method: 'POST',
       headers: {
@@ -76,21 +83,38 @@ export const enviarDatosRegistro = async (datos) => {
     }
 
     const result = await response.json();
-    // Desencriptamos la respuesta del registro (asumiendo que viene igual que login)
-    const dataDesencriptada = desencriptarDatos(result.data || result.Data);
 
-    // --- NUEVO: GUARDAR TOKENS TRAS REGISTRO ---
-    if (dataDesencriptada.Token && dataDesencriptada.RefreshToken) {
-        await AsyncStorage.setItem('token', dataDesencriptada.Token);
-        await AsyncStorage.setItem('refreshToken', dataDesencriptada.RefreshToken);
-        await AsyncStorage.setItem('usuarioId', dataDesencriptada.Id.toString());
+    // --- CAMBIO CLAVE AQUÍ ---
+    // Verificamos si realmente hay datos para desencriptar
+    const datosRecibidos = result.data || result.Data;
+    
+    if (!datosRecibidos) {
+        console.log("⚠️ El servidor no envió datos para desencriptar, pero la cuenta se creó.");
+        return result; // Retornamos el resultado original (ej. { Message: "Usuario registrado..." })
     }
 
-    console.log("✅ Registro exitoso y tokens guardados");
-    return dataDesencriptada;
+    const dataDesencriptada = desencriptarDatos(datosRecibidos);
+
+    // 4. Guardar tokens solo si existen en la data desencriptada
+    if (dataDesencriptada && dataDesencriptada.Token) {
+        await AsyncStorage.setItem('token', dataDesencriptada.Token);
+        
+        if (dataDesencriptada.RefreshToken) {
+            await AsyncStorage.setItem('refreshToken', dataDesencriptada.RefreshToken);
+        }
+        
+        if (dataDesencriptada.Id) {
+            await AsyncStorage.setItem('usuarioId', dataDesencriptada.Id.toString());
+        }
+        
+        console.log("✅ Registro exitoso y tokens guardados");
+    }
+
+    return dataDesencriptada || result;
 
   } catch (error) {
-    console.error("❌ Error al cifrar o enviar registro:", error);
+    // Capturamos el error específico para que no truene la app
+    console.error("❌ Error controlado en registro:", error.message);
     throw error;
   }
 };

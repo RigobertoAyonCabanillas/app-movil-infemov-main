@@ -60,6 +60,8 @@ function AppContent() {
           <Stack.Screen name="index" options={{ title: "Login" }} />
           <Stack.Screen name="register" options={{ title: "Registro" }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          {/* AGREGA ESTO: El grupo de ajustes para que iOS lo reconozca */}
+        <Stack.Screen name="(settings)" options={{ headerShown: false }} />
         </Stack>
       </PaperProvider>
     </UserProvider>
