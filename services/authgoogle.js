@@ -1,10 +1,10 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { desencriptarDatos } from './api';
-
+import { limpiarDatosLocales } from './session'; // Importamos la lógica de sesión
 
 // Definimos la base de la URL para poder reutilizarla
-const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth'; 
+import { API_URL } from './api'; // <--- Importamos la constante
 
 // --- FUNCIÓN DE ENTRADA (Login) ---
 export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
@@ -19,7 +19,7 @@ export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
   console.log("Datos pal loginGG", body);
 
   try {
-    const response = await fetch(`${BASE_AUTH_URL}/google-auth`, {
+    const response = await fetch(`${API_URL}/google-auth`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -83,31 +83,21 @@ export const enviarLoginGoogle = async (accessToken, idToken, folioExterno) => {
 };
 
 // --- FUNCIÓN DE SALIDA (Logout) ---
+
 export const cerrarSesionUniversal = async () => {
   try {
-    const token = await AsyncStorage.getItem('token') || await AsyncStorage.getItem('userToken');
-
-    if (token) {
-      // Usamos .catch para que si el servidor C# no responde, no trabe el resto
-      fetch(`${BASE_AUTH_URL}/logout`, { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Token: token })
-      }).catch(() => console.log("⚠️ C# no disponible"));
-    }
-
-    // Google SignOut con manejo de error para que no rompa el Sitemap
+    // Manejo de Google independiente para evitar errores en iPhone
     try {
       await GoogleSignin.signOut();
     } catch (e) {
-      console.log("ℹ️ Google ya cerrado");
+      console.log("ℹ️ Google ya cerrado o no inicializado");
     }
 
-    await AsyncStorage.clear();
-    return true; 
+    // Llamamos a la limpieza de tokens y AsyncStorage
+    const exito = await limpiarDatosLocales();
+    return exito;
   } catch (error) {
-    console.error("❌ Error en logout:", error);
-    await AsyncStorage.clear();
-    return true; 
+    console.error("❌ Error en logout universal:", error);
+    return false;
   }
 };

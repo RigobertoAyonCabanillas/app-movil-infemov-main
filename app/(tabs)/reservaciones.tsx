@@ -46,7 +46,9 @@ export default function ReservacionesScreen() {
     sincronizarClasesGimnasio, 
     inscribirAClaseProceso, 
     cancelarInscripcionProceso, 
-    obtenerMisClasesProceso 
+    obtenerMisClasesProceso,
+    obtenerMembresiasLocal,
+    obtenerCreditosLocal
   } = useAuthService();
 
   const [inicioSemana] = useState(() => {
@@ -69,6 +71,7 @@ export default function ReservacionesScreen() {
   const [clasesDisponibles, setClasesDisponibles] = useState<Clase[]>([]);
   const [misClasesInscritas, setMisClasesInscritas] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
+  const [tieneAcceso, setTieneAcceso] = useState(false); // Estado para validar créditos/membresía
   
   const hoyStr = new Date(new Date().getTime() - (7 * 60 * 60 * 1000)).toISOString().split('T')[0];
   const [expandedId, setExpandedId] = useState<string | null>(hoyStr);
@@ -81,6 +84,15 @@ export default function ReservacionesScreen() {
     if (!gimnasioId || !usuarioIdActual) return;
     setLoading(true);
     try {
+      // 1. Validar Membresías y Créditos desde SQLite
+      const membresias = await obtenerMembresiasLocal(usuarioIdActual);
+      const creditos = await obtenerCreditosLocal(usuarioIdActual);
+      
+      // Si hay registros en cualquiera de las dos tablas, se considera que tiene acceso
+      const cuentaConAcceso = membresias.length > 0 || creditos.length > 0;
+      setTieneAcceso(cuentaConAcceso);
+
+      // 2. Cargar Clases e Inscripciones
       const datosLocales = await sincronizarClasesGimnasio(gimnasioId, usuarioIdActual);
       const formateadas: Clase[] = datosLocales.map((item: any) => ({
         id: item.claseId, 
@@ -98,7 +110,6 @@ export default function ReservacionesScreen() {
       setClasesDisponibles(formateadas);
       const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
       
-      // FILTRO CRÍTICO: Solo mostrar en "Mis Reservaciones" las que NO han pasado
       const activas = inscripciones.filter((ins: any) => {
         const f = ins.fecha || ins.dia;
         const h = ins.horaInicio;
@@ -119,38 +130,39 @@ export default function ReservacionesScreen() {
   const verificarSiYaPaso = (fecha: string, hora: string) => {
     const ahora = new Date();
     const tiempoSonora = new Date(ahora.getTime() - (7 * 60 * 60 * 1000));
-    // Limpiamos la fecha para evitar desfases de zona horaria al parsear
     const fechaLimpia = fecha.split('T')[0]; 
     const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
     return isBefore(fechaClase, tiempoSonora);
   };
 
   const obtenerInfoEstado = (clase: Clase) => {
-    const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
-    if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
+  const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
+  if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
 
-    const claseIdNum = Number(clase.id);
-    const inscripcionPropia = misClasesInscritas.find(
-      (ins) => Number(ins.id || ins.claseId || ins.clase_ID) === claseIdNum
-    );
+  const claseIdNum = Number(clase.id);
+  const inscripcionPropia = misClasesInscritas.find(
+    (ins) => Number(ins.id || ins.claseId || ins.clase_ID) === claseIdNum
+  );
 
-    if (inscripcionPropia) {
-      const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
-      return { 
-        color: esEspera ? COLORS.espera : COLORS.inscrito, 
-        label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
-        tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
-      };
-    }
+  if (inscripcionPropia) {
+    const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
+    return { 
+      color: esEspera ? COLORS.espera : COLORS.inscrito, 
+      label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
+      tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
+    };
+  }
 
-    const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
-    if (estaLleno) return { color: COLORS.lleno, label: 'LLENO', tipo: 'LLENO' };
-    
-    return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
-  };
+  const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
+  if (estaLleno) {
+    // Cambiamos el label a "ESPERA" y el tipo para identificarlo en el botón
+    return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
+  }
+  
+  return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
+};
 
   const ejecutarCancelacion = async (idClase: string | number) => {
-    // Buscamos si la clase ya pasó antes de intentar cancelar
     const claseOriginal = clasesDisponibles.find(c => Number(c.id) === Number(idClase));
     if (claseOriginal && verificarSiYaPaso(claseOriginal.dia, claseOriginal.horaInicio)) {
       Alert.alert("Aviso", "No se puede cancelar una clase que ya pasó.");
@@ -161,7 +173,7 @@ export default function ReservacionesScreen() {
     try {
       await cancelarInscripcionProceso(idClase);
       Alert.alert("Éxito", "Reserva cancelada.");
-      await cargarDatos(); // Recargamos para limpiar la UI
+      await cargarDatos(); 
     } catch (error: any) {
       Alert.alert("Error", error.message);
     } finally {
@@ -171,6 +183,14 @@ export default function ReservacionesScreen() {
 
   const manejarInscripcionFinal = async (lugar: any) => {
     if (!claseSeleccionada) return;
+    
+    // Doble validación de acceso antes de procesar
+    if (!tieneAcceso) {
+      Alert.alert("Error", "No tienes créditos o membresía.");
+      setModalEquipoVisible(false);
+      return;
+    }
+
     setModalEquipoVisible(false);
     setLoading(true);
     try {
@@ -189,7 +209,6 @@ export default function ReservacionesScreen() {
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
         <Portal>
-          {/* MODAL GESTIÓN: Ahora filtrado por fecha */}
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
             <Text style={styles.modalTitle}>MIS RESERVACIONES ACTIVAS</Text>
             <ScrollView style={{ maxHeight: 400 }}>
@@ -245,6 +264,12 @@ export default function ReservacionesScreen() {
           </View>
         </Surface>
 
+        {!tieneAcceso && !loading && (
+          <Surface style={styles.noAccessBanner}>
+             <Text style={styles.noAccessText}>⚠️ No tienes membresía activa o créditos.</Text>
+          </Surface>
+        )}
+
         {loading ? (
           <ActivityIndicator style={{marginTop: 50}} color={COLORS.accent} size="large" />
         ) : (
@@ -284,13 +309,33 @@ export default function ReservacionesScreen() {
                                   mode="contained" 
                                   buttonColor={estado.color} 
                                   onPress={() => {
-                                    setClaseSeleccionada(clase);
-                                    if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
-                                      ejecutarCancelacion(clase.id);
-                                    } else if (estado.tipo === 'LIBRE') {
-                                      setModalEquipoVisible(true);
-                                    }
-                                  }} 
+                                      setClaseSeleccionada(clase);
+                                      
+                                      if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
+                                        ejecutarCancelacion(clase.id);
+                                      } else if (estado.tipo === 'LIBRE') {
+                                        if (!tieneAcceso) {
+                                          Alert.alert("Acceso Restringido", "Debes contar con una membresía o créditos.");
+                                          return;
+                                        }
+                                        setModalEquipoVisible(true);
+                                      } else if (estado.tipo === 'DISPONIBLE_ESPERA') {
+                                        // Si está llena, inscribimos directamente en la posición 0 (lista de espera)
+                                        if (!tieneAcceso) {
+                                          Alert.alert("Acceso Restringido", "Debes contar con una membresía o créditos.");
+                                          return;
+                                        }
+                                        
+                                        Alert.alert(
+                                          "Clase Llena",
+                                          "¿Deseas entrar en la lista de espera?",
+                                          [
+                                            { text: "Cancelar", style: "cancel" },
+                                            { text: "Entrar", onPress: () => manejarInscripcionFinal(0) }
+                                          ]
+                                        );
+                                      }
+                                    }}
                                   labelStyle={{ fontSize: 11, color: '#000', fontWeight: 'bold' }}
                                   style={styles.btnAccion}
                                 >
@@ -331,5 +376,7 @@ const styles = StyleSheet.create({
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   filaLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 },
   botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 5 },
-  itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#333' }
+  itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
+  noAccessBanner: { margin: 15, padding: 10, backgroundColor: '#2a0000', borderRadius: 8, borderWidth: 1, borderColor: '#550000' },
+  noAccessText: { color: '#FF5555', textAlign: 'center', fontWeight: 'bold', fontSize: 13 }
 });

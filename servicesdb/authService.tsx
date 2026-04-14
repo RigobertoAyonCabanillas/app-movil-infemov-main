@@ -376,36 +376,32 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
 
 const actualizarGimnasioSeleccionado = async (gymId: any, userIdViejo: number, correo: string, password: string) => {
     try {
-        // 1. Limpiamos el contexto para evitar renderizados con datos viejos
-        setUsers(null); 
-
         const responseApi = await gestionarSucursalesApi(correo, password, gymId);
 
-        if (responseApi.Accion === "CambioExitoso" && responseApi.NuevoToken) {
-            const nuevoUserId = responseApi.Id || responseApi.NuevoUserId; 
+        // CORRECCIÓN: Se agregó el espacio para coincidir con el API
+        if (responseApi.Accion === "Cambio Exitoso" && responseApi.NuevoToken) {
+            
+            const nuevoUserId = responseApi.Id; // El API manda 'Id'
             const nuevoToken = responseApi.NuevoToken;
 
-            // --- PASO CRÍTICO: Actualizar el disco antes que nada ---
             await AsyncStorage.setItem('token', nuevoToken);
             if (responseApi.RefreshToken) {
                 await AsyncStorage.setItem('refreshToken', responseApi.RefreshToken);
             }
 
-            // 2. Limpieza de base de datos local
-            // Usamos una transacción o borramos en orden
+            // Limpieza de datos locales vinculados al ID anterior
             await drizzleDb.delete(schema.usersdb).where(eq(schema.usersdb.id, userIdViejo));
             await drizzleDb.delete(schema.creditosdb); 
             await drizzleDb.delete(schema.membresiasdb);
 
-            // 3. Inserción con los datos frescos de la respuesta
+            // Inserción con mapeo de nombres de campos del API
             const filasNuevas = await drizzleDb.insert(schema.usersdb).values({
                 id: nuevoUserId,
-                gymId: gymId,
+                gymId: responseApi.GimnasioActual || gymId, // Usamos la confirmación del server
                 token: nuevoToken,
                 correo: correo,
                 contrasena: password,
-                // Usamos lo que la API ya nos dio para no mostrar campos vacíos
-                nombres: responseApi.Nombre || "Cargando...", 
+                nombres: responseApi.Nombre || "Usuario", // Mapeo de 'Nombre' a 'nombres'
                 apellidoPaterno: responseApi.ApellidoPaterno || "",
                 apellidoMaterno: responseApi.ApellidoMaterno || "",
                 telefono: responseApi.Telefono || ""
@@ -417,25 +413,20 @@ const actualizarGimnasioSeleccionado = async (gymId: any, userIdViejo: number, c
                     id: Number(filasNuevas[0].id)
                 };
                 
-                // 4. Actualizamos el estado global
                 setUsers(usuarioParaContexto);
                 
-                console.log(`✅ Identidad cambiada: Ahora eres ID ${nuevoUserId}`);
-
-                // 5. Sincronización final de perfil
-                // Pasamos el nuevoToken explícitamente por si el Storage tarda milisegundos
+                // Sincronizamos con el nuevo ID y Token
                 await sincronizarPerfil(Number(nuevoUserId), correo, nuevoToken);
-                
-                console.log("✅ Perfil sincronizado con el servidor exitosamente.");
             }
             
             return responseApi; 
         }
+        return responseApi;
     } catch (error) {
-        console.error("❌ Error en el proceso de cambio de gimnasio:", error);
+        console.error("❌ Error en el proceso:", error);
         throw error;
     }
-  };
+};
 
 const enviarSugerenciaService = async (comentario: string, calificacion: number, gymId: number | string) => {
     try {
@@ -558,7 +549,7 @@ const cancelarInscripcionProceso = async (idClase: string | number) => {
   }
 };
 
+
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
     actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService,sincronizarClasesGimnasio, inscribirAClaseProceso, cancelarInscripcionProceso, obtenerMisClasesProceso};
 }
-

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from './api'; // <--- Importamos la constante
 
-const BASE_AUTH_URL = 'http://100.116.49.102:5254/api/auth';
 
 export const limpiarDatosLocales = async () => {
   try {
@@ -8,7 +8,7 @@ export const limpiarDatosLocales = async () => {
     
     if (token) {
       // Notificamos al servidor C# sin esperar (no bloqueante)
-      fetch(`${BASE_AUTH_URL}/logout`, {
+      fetch(`${API_URL}/logout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Token: token })
