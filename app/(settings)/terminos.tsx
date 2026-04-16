@@ -2,12 +2,13 @@ import React from 'react';
 import { StyleSheet, ScrollView, View } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+// Importa esto para manejar los espacios del sistema
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Paleta de colores consistente con tu UI de Dark Mode
 const COLORS = {
     bg: '#121212',
     cardBg: '#1e1e1e',
-    accent: '#99bc1a', // Tu verde característico
+    accent: '#39FF14', 
     textMain: '#ffffff',
     textSecondary: '#aaaaaa',
     border: '#333333'
@@ -15,9 +16,10 @@ const COLORS = {
 
 const TerminosScreen = () => {
     const router = useRouter();
+    const insets = useSafeAreaInsets(); // Obtiene el tamaño de la barra de navegación
 
     return (
-        <View style={styles.mainContainer}>
+        <View style={[styles.mainContainer, { paddingTop: insets.top }]}>
             <ScrollView style={styles.container} contentContainerStyle={styles.content}>
                 <Text style={styles.updateText}>Última actualización: Julio de 2025</Text>
                 
@@ -50,7 +52,11 @@ const TerminosScreen = () => {
                 </Text>
             </ScrollView>
 
-            <View style={styles.footer}>
+            {/* Aplicamos el inset inferior al footer */}
+            <View style={[
+                styles.footer, 
+                { paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 20 }
+            ]}>
                 <Button 
                     mode="contained" 
                     onPress={() => router.back()} 
@@ -87,7 +93,7 @@ const styles = StyleSheet.create({
     title: { 
         fontSize: 22, 
         fontWeight: 'bold', 
-        color: COLORS.accent, // Cambiado de rosa a tu verde acento
+        color: COLORS.accent, 
         marginBottom: 15 
     },
     sectionTitle: { 
@@ -119,7 +125,8 @@ const styles = StyleSheet.create({
         color: COLORS.textMain 
     },
     footer: { 
-        padding: 20, 
+        paddingHorizontal: 20,
+        paddingTop: 15, // Espacio arriba del botón
         borderTopWidth: 1, 
         borderColor: COLORS.border,
         backgroundColor: COLORS.bg

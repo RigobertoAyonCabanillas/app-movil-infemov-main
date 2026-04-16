@@ -9,7 +9,7 @@ import { UserContext } from '@/components/UserContext';
 const COLORS = {
     bg: '#121212',
     cardBg: '#1e1e1e',
-    accent: '#99bc1a', // Verde neón de tus botones e indicadores
+    accent: '#39FF14', // Verde neón de tus botones e indicadores
     textMain: '#ffffff',
     textSecondary: '#aaaaaa',
     stars: '#FFD700'

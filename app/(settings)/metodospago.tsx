@@ -21,7 +21,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    color: '#00E5FF', // Color neón que usas en el proyecto
+    color: '#39FF14', // Color neón que usas en el proyecto
     fontWeight: 'bold',
     marginBottom: 10,
   },

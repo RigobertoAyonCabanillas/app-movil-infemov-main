@@ -51,30 +51,36 @@ export default function ReservacionesScreen() {
     obtenerCreditosLocal
   } = useAuthService();
 
+  // --- LÓGICA DE FECHAS CORREGIDA (LUNES A DOMINGO) ---
   const [inicioSemana] = useState(() => {
     const ahora = new Date();
-    const tiempoSonora = new Date(ahora.getTime() - (7 * 60 * 60 * 1000));
-    const numeroDia = tiempoSonora.getUTCDay(); 
-    let lunesBase = new Date(tiempoSonora);
-    if (numeroDia === 0) lunesBase.setUTCDate(lunesBase.getUTCDate() - 6);
-    else lunesBase.setUTCDate(lunesBase.getUTCDate() - (numeroDia - 1));
-    lunesBase.setUTCHours(0, 0, 0, 0);
+    // Ajuste para trabajar con la fecha local de Sonora sin desfases de UTC
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    
+    // getDay() devuelve: 0 para Domingo, 1 para Lunes, etc.
+    const numeroDia = hoy.getDay(); 
+    const diferenciaAlLunes = numeroDia === 0 ? -6 : 1 - numeroDia;
+    
+    const lunesBase = new Date(hoy);
+    lunesBase.setDate(hoy.getDate() + diferenciaAlLunes);
+    lunesBase.setHours(0, 0, 0, 0);
     return lunesBase;
   });
 
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(inicioSemana);
-    d.setUTCDate(d.getUTCDate() + i);
+    d.setDate(inicioSemana.getDate() + i);
     return d;
   });
   
   const [clasesDisponibles, setClasesDisponibles] = useState<Clase[]>([]);
   const [misClasesInscritas, setMisClasesInscritas] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
-  const [tieneAcceso, setTieneAcceso] = useState(false); // Estado para validar créditos/membresía
+  const [tieneAcceso, setTieneAcceso] = useState(false);
   
-  const hoyStr = new Date(new Date().getTime() - (7 * 60 * 60 * 1000)).toISOString().split('T')[0];
-  const [expandedId, setExpandedId] = useState<string | null>(hoyStr);
+  // Hoy en formato YYYY-MM-DD para abrir el acordeón por defecto
+  const hoyISO = new Date().toISOString().split('T')[0];
+  const [expandedId, setExpandedId] = useState<string | null>(hoyISO);
 
   const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
   const [modalGestionVisible, setModalGestionVisible] = useState(false); 
@@ -84,15 +90,10 @@ export default function ReservacionesScreen() {
     if (!gimnasioId || !usuarioIdActual) return;
     setLoading(true);
     try {
-      // 1. Validar Membresías y Créditos desde SQLite
       const membresias = await obtenerMembresiasLocal(usuarioIdActual);
       const creditos = await obtenerCreditosLocal(usuarioIdActual);
-      
-      // Si hay registros en cualquiera de las dos tablas, se considera que tiene acceso
-      const cuentaConAcceso = membresias.length > 0 || creditos.length > 0;
-      setTieneAcceso(cuentaConAcceso);
+      setTieneAcceso(membresias.length > 0 || creditos.length > 0);
 
-      // 2. Cargar Clases e Inscripciones
       const datosLocales = await sincronizarClasesGimnasio(gimnasioId, usuarioIdActual);
       const formateadas: Clase[] = datosLocales.map((item: any) => ({
         id: item.claseId, 
@@ -109,15 +110,7 @@ export default function ReservacionesScreen() {
 
       setClasesDisponibles(formateadas);
       const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
-      
-      const activas = inscripciones.filter((ins: any) => {
-        const f = ins.fecha || ins.dia;
-        const h = ins.horaInicio;
-        if (!f || !h) return true;
-        return !verificarSiYaPaso(f, h);
-      });
-
-      setMisClasesInscritas(activas);
+      setMisClasesInscritas(inscripciones);
     } catch (error) {
       console.error("Error cargando datos:", error);
     } finally {
@@ -129,46 +122,36 @@ export default function ReservacionesScreen() {
 
   const verificarSiYaPaso = (fecha: string, hora: string) => {
     const ahora = new Date();
-    const tiempoSonora = new Date(ahora.getTime() - (7 * 60 * 60 * 1000));
     const fechaLimpia = fecha.split('T')[0]; 
     const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
-    return isBefore(fechaClase, tiempoSonora);
+    return isBefore(fechaClase, ahora);
   };
 
   const obtenerInfoEstado = (clase: Clase) => {
-  const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
-  if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
+    const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
+    if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
 
-  const claseIdNum = Number(clase.id);
-  const inscripcionPropia = misClasesInscritas.find(
-    (ins) => Number(ins.id || ins.claseId || ins.clase_ID) === claseIdNum
-  );
+    const claseIdNum = Number(clase.id);
+    const inscripcionPropia = misClasesInscritas.find(
+      (ins) => Number(ins.claseId || ins.id || ins.clase_ID) === claseIdNum
+    );
 
-  if (inscripcionPropia) {
-    const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
-    return { 
-      color: esEspera ? COLORS.espera : COLORS.inscrito, 
-      label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
-      tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
-    };
-  }
-
-  const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
-  if (estaLleno) {
-    // Cambiamos el label a "ESPERA" y el tipo para identificarlo en el botón
-    return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
-  }
-  
-  return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
-};
-
-  const ejecutarCancelacion = async (idClase: string | number) => {
-    const claseOriginal = clasesDisponibles.find(c => Number(c.id) === Number(idClase));
-    if (claseOriginal && verificarSiYaPaso(claseOriginal.dia, claseOriginal.horaInicio)) {
-      Alert.alert("Aviso", "No se puede cancelar una clase que ya pasó.");
-      return;
+    if (inscripcionPropia) {
+      const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
+      return { 
+        color: esEspera ? COLORS.espera : COLORS.inscrito, 
+        label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
+        tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
+      };
     }
 
+    const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
+    if (estaLleno) return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
+    
+    return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
+  };
+
+  const ejecutarCancelacion = async (idClase: string | number) => {
     setLoading(true);
     try {
       await cancelarInscripcionProceso(idClase);
@@ -183,19 +166,11 @@ export default function ReservacionesScreen() {
 
   const manejarInscripcionFinal = async (lugar: any) => {
     if (!claseSeleccionada) return;
-    
-    // Doble validación de acceso antes de procesar
-    if (!tieneAcceso) {
-      Alert.alert("Error", "No tienes créditos o membresía.");
-      setModalEquipoVisible(false);
-      return;
-    }
-
     setModalEquipoVisible(false);
     setLoading(true);
     try {
       await inscribirAClaseProceso(claseSeleccionada.id, lugar, usuarioIdActual);
-      Alert.alert("Éxito", "Inscripción completada.");
+      Alert.alert("Éxito", "Operación realizada correctamente.");
       await cargarDatos();
     } catch (error: any) {
       Alert.alert("Error", error.message);
@@ -208,34 +183,9 @@ export default function ReservacionesScreen() {
     <PaperProvider theme={{...DefaultTheme, colors: {...DefaultTheme.colors, background: COLORS.bg}}}>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
+        
         <Portal>
-          <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
-            <Text style={styles.modalTitle}>MIS RESERVACIONES ACTIVAS</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              {misClasesInscritas.length === 0 ? (
-                <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>No tienes clases próximas.</Text>
-              ) : (
-                misClasesInscritas.map((ins, index) => (
-                  <View key={index} style={styles.itemGestion}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase}</Text>
-                      <Text style={{ color: (ins.lugar === 0 || ins.lugar === "0") ? COLORS.espera : COLORS.inscrito, fontSize: 12 }}>
-                        {(ins.lugar === 0 || ins.lugar === "0") ? 'LISTA DE ESPERA' : `LUGAR: ${ins.lugar}`}
-                      </Text>
-                    </View>
-                    <Button 
-                      textColor={COLORS.lleno} 
-                      onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id || ins.clase_ID); }}
-                    >
-                        Cancelar
-                    </Button>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-            <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
-          </Modal>
-
+          {/* Modal Lugares */}
           <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
             <View style={styles.filaLugares}>
@@ -254,12 +204,35 @@ export default function ReservacionesScreen() {
             </View>
             <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
           </Modal>
+
+          {/* Modal Mis Reservaciones */}
+          <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
+            <Text style={styles.modalTitle}>MIS PRÓXIMAS CLASES</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {misClasesInscritas.length === 0 ? (
+                <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>No tienes reservaciones activas.</Text>
+              ) : (
+                misClasesInscritas.map((ins, index) => (
+                  <View key={index} style={styles.itemGestion}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase}</Text>
+                      <Text style={{ color: COLORS.textSub, fontSize: 12 }}>{ins.dia} | {ins.horaInicio}</Text>
+                    </View>
+                    <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id); }}>
+                      Cancelar
+                    </Button>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+          </Modal>
         </Portal>
 
         <Surface style={styles.header}>
           <View style={styles.headerRow}>
-            <View style={{ width: 40 }} />
-            <Text style={styles.headerTitle}>HORARIOS SEMANALES</Text>
+            <IconButton icon="menu" iconColor={COLORS.textMain} size={25} />
+            <Text style={styles.headerTitle}>RESERVACIONES</Text>
             <IconButton icon="calendar-check" iconColor={COLORS.accent} size={28} onPress={() => setModalGestionVisible(true)} />
           </View>
         </Surface>
@@ -277,14 +250,16 @@ export default function ReservacionesScreen() {
             {diasSemana.map((dia) => {
               const fechaID = dia.toISOString().split('T')[0];
               const clasesDelDia = clasesDisponibles.filter(c => c.dia.split('T')[0] === fechaID);
+              const esHoy = fechaID === hoyISO;
+
               return (
                 <List.Accordion
                   key={fechaID}
-                  title={format(dia, "EEEE d 'De' MMMM", { locale: es })}
+                  title={format(dia, "EEEE d 'de' MMMM", { locale: es })}
                   expanded={expandedId === fechaID}
                   onPress={() => setExpandedId(expandedId === fechaID ? null : fechaID)}
                   style={styles.accordion}
-                  titleStyle={styles.accordionTitle}
+                  titleStyle={[styles.accordionTitle, esHoy && { color: COLORS.accent, fontWeight: 'bold' }]}
                 >
                   {clasesDelDia.map((clase) => {
                     const estado = obtenerInfoEstado(clase);
@@ -294,7 +269,7 @@ export default function ReservacionesScreen() {
                       <List.Item
                         key={clase.id}
                         title={clase.nombre}
-                        description={`${clase.horaInicio} - ${clase.horaFin}\nVacantes: ${clase.vacantes}`}
+                        description={`${clase.horaInicio} - ${clase.horaFin}\nCoach: ${clase.coach}`}
                         titleStyle={{ color: esPasada ? COLORS.pasadoText : COLORS.textMain, fontWeight: 'bold' }}
                         descriptionStyle={{ color: COLORS.textSub }}
                         style={[styles.listItem, { borderLeftColor: esPasada ? COLORS.pasadoBorder : estado.color }]}
@@ -309,31 +284,15 @@ export default function ReservacionesScreen() {
                                   mode="contained" 
                                   buttonColor={estado.color} 
                                   onPress={() => {
-                                      setClaseSeleccionada(clase);
-                                      
                                       if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
                                         ejecutarCancelacion(clase.id);
-                                      } else if (estado.tipo === 'LIBRE') {
+                                      } else {
                                         if (!tieneAcceso) {
-                                          Alert.alert("Acceso Restringido", "Debes contar con una membresía o créditos.");
-                                          return;
+                                            Alert.alert("Aviso", "Necesitas una membresía o créditos.");
+                                            return;
                                         }
-                                        setModalEquipoVisible(true);
-                                      } else if (estado.tipo === 'DISPONIBLE_ESPERA') {
-                                        // Si está llena, inscribimos directamente en la posición 0 (lista de espera)
-                                        if (!tieneAcceso) {
-                                          Alert.alert("Acceso Restringido", "Debes contar con una membresía o créditos.");
-                                          return;
-                                        }
-                                        
-                                        Alert.alert(
-                                          "Clase Llena",
-                                          "¿Deseas entrar en la lista de espera?",
-                                          [
-                                            { text: "Cancelar", style: "cancel" },
-                                            { text: "Entrar", onPress: () => manejarInscripcionFinal(0) }
-                                          ]
-                                        );
+                                        setClaseSeleccionada(clase);
+                                        estado.tipo === 'LIBRE' ? setModalEquipoVisible(true) : manejarInscripcionFinal(0);
                                       }
                                     }}
                                   labelStyle={{ fontSize: 11, color: '#000', fontWeight: 'bold' }}
@@ -360,23 +319,23 @@ export default function ReservacionesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  header: { paddingVertical: 10, backgroundColor: COLORS.cardBg, alignItems: 'center' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 15 },
-  headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18 },
+  header: { paddingVertical: 10, backgroundColor: COLORS.cardBg, elevation: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10 },
+  headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18, letterSpacing: 1 },
   scrollContent: { padding: 15 },
-  accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5 },
+  accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5, borderRadius: 8 },
   accordionTitle: { color: COLORS.textMain, textTransform: 'capitalize' },
-  listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, paddingVertical: 10, borderLeftWidth: 4 },
-  rightContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 110 },
-  btnAccion: { borderRadius: 20, minWidth: 95 },
-  boxPasado: { borderWidth: 1, borderColor: COLORS.pasadoBorder, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 8, minWidth: 95, alignItems: 'center' },
+  listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, borderLeftWidth: 4 },
+  rightContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 100 },
+  btnAccion: { borderRadius: 20, height: 35, justifyContent: 'center' },
+  boxPasado: { borderWidth: 1, borderColor: COLORS.pasadoBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   textPasado: { color: COLORS.pasadoText, fontSize: 11, fontWeight: 'bold' },
   modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 10 },
   modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
-  modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, fontSize: 16 },
   filaLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 },
-  botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 5 },
-  itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
-  noAccessBanner: { margin: 15, padding: 10, backgroundColor: '#2a0000', borderRadius: 8, borderWidth: 1, borderColor: '#550000' },
-  noAccessText: { color: '#FF5555', textAlign: 'center', fontWeight: 'bold', fontSize: 13 }
+  botonLugar: { width: 45, height: 45, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
+  itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
+  noAccessBanner: { margin: 15, padding: 12, backgroundColor: '#2a0000', borderRadius: 8, borderLeftWidth: 5, borderLeftColor: COLORS.lleno },
+  noAccessText: { color: '#FFAAAA', fontWeight: 'bold', textAlign: 'center' }
 });

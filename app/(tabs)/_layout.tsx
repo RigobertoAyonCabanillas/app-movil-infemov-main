@@ -1,9 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from "expo-router";
-import { Ionicons } from '@expo/vector-icons'; 
-import { Image } from "react-native";
 import { useContext } from "react";
-import { UserContext } from "../../components/UserContext";
+import { Image } from "react-native";
 import { IconButton } from 'react-native-paper';
+import { UserContext } from "../../components/UserContext";
 
 export default function TabLayout() {
     const { users } = useContext(UserContext);
@@ -50,7 +50,7 @@ export default function TabLayout() {
                 name="creditos"
                 options={{
                     title: 'Créditos',
-                    tabBarIcon: ({ color }) => <Ionicons name="star-outline" size={24} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="cash-outline" size={24} color={color} />,
                     href: esCoach ? null : undefined,
                 }}
             />

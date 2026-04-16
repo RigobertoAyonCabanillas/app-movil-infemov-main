@@ -17,12 +17,16 @@ import BtnLoginGoogle from "../components/BtnLoginGoogle";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const BRAND_PINK = '#FF3CAC'; 
+const BRAND_GREEN = '#39FF14'; 
+const PINK_FADE = 'rgba(255, 60, 172, 0.3)';
+const GREEN_FADE = 'rgba(57, 255, 20, 0.1)';
+
 export default function Registro() {
   const { setUsers } = useContext(UserContext);
   const params = useLocalSearchParams();
   const { registrarUsuarioProceso } = useAuthService();
 
-  // --- ESTADOS ---
   const [nombre, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
@@ -33,19 +37,16 @@ export default function Registro() {
   const [esEstudiante, setEsEstudiante] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
-  // --- CELULAR ---
   const [countryCode, setCountryCode] = useState<CountryCode>('MX');
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [callingCode, setCallingCode] = useState('52');
   const [telefonoLimpio, setTelefonoLimpio] = useState('');
   const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
 
-  // --- FECHA ---
   const [date, setDate] = useState(new Date(2000, 0, 1)); 
   const [show, setShow] = useState(false);
   const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
 
-  // --- GYM DATA ---
   const [gymSelected] = useState<number | null>(Number(params.gymId) || null);
   const [nombreGimnasio] = useState(params.gymNombre || "");
 
@@ -135,6 +136,7 @@ export default function Registro() {
           <View style={styles.googleSection}>
             <Text style={styles.subText}>También puedes registrarte con:</Text>
             <BtnLoginGoogle folioExterno={gymSelected} />
+            
             <View style={styles.gymBadge}>
               <Text style={styles.gymBadgeText}>Gimnasio: {nombreGimnasio}</Text>
             </View>
@@ -200,19 +202,18 @@ export default function Registro() {
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>¿Eres estudiante?</Text>
             <View style={styles.pickerContainer}>
-              <Picker selectedValue={esEstudiante} onValueChange={(v) => setEsEstudiante(v)} style={{ color: '#fff' }} dropdownIconColor="#00E5FF">
+              <Picker selectedValue={esEstudiante} onValueChange={(v) => setEsEstudiante(v)} style={{ color: '#fff' }} dropdownIconColor={BRAND_PINK}>
                 <Picker.Item label="Selecciona una opción..." value={0} color="#444" />
-                <Picker.Item label="Sí, soy estudiante" value={1} />
-                <Picker.Item label="No soy estudiante" value={2} />
+                <Picker.Item label="Sí, soy estudiante" value={1} color={Platform.OS === 'ios' ? '#fff' : '#000'} />
+                <Picker.Item label="No soy estudiante" value={2} color={Platform.OS === 'ios' ? '#fff' : '#000'} />
               </Picker>
             </View>
           </View>
 
           <TouchableOpacity style={styles.submitBtn} onPress={handlRegister} disabled={loading}>
-            {loading ? <ActivityIndicator color="#00E5FF" /> : <Text style={styles.submitBtnText}>REGISTRARSE</Text>}
+            {loading ? <ActivityIndicator color={BRAND_PINK} /> : <Text style={styles.submitBtnText}>REGISTRARSE</Text>}
           </TouchableOpacity>
 
-          {/* --- BOTÓN PARA REGRESAR AL LOGIN --- */}
           <TouchableOpacity 
             style={styles.backToLoginBtn} 
             onPress={() => router.back()}
@@ -225,21 +226,29 @@ export default function Registro() {
         </View>
       </ScrollView>
 
-      <Modal visible={showCountryPicker} animationType="slide">
+      {/* MODAL CORREGIDO CON BANDERAS PARA REGISTRO */}
+      <Modal visible={showCountryPicker} animationType="slide" transparent={false}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.closeModalBtn}>
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>✕</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Selecciona tu país</Text>
+          <View style={styles.modalHeaderCustom}>
+            <Text style={styles.modalHeaderTitle}>Selecciona tu país</Text>
           </View>
           <CountryPicker
             countryCode={countryCode}
             visible={showCountryPicker}
             onSelect={(c) => { onSelect(c); setShowCountryPicker(false); }}
+            onClose={() => setShowCountryPicker(false)}
             withFilter
+            withFlag={true} // <--- ESTA LÍNEA ES LA QUE FALTA
+            withEmoji={true} // Para asegurar que se renderice el icono o emoji de la bandera
             withAlphaFilter
-            theme={{ backgroundColor: '#000', onBackgroundTextColor: '#fff', fontSize: 16 }}
+            withCallingCode
+            withModal={false}
+            theme={{ 
+              backgroundColor: '#000', 
+              onBackgroundTextColor: '#fff', 
+              fontSize: 16,
+              filterPlaceholderTextColor: '#666'
+            }}
           />
         </SafeAreaView>
       </Modal>
@@ -259,45 +268,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0A',
     borderRadius: 25,
     padding: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
+    borderWidth: 2,
+    borderColor: BRAND_PINK,
+    shadowColor: BRAND_PINK,
+    shadowRadius: 10,
+    elevation: 5,
   },
   neonTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#00E5FF',
+    color: BRAND_PINK,
     textAlign: 'center',
     marginBottom: 20,
-    textShadowColor: 'rgba(0, 229, 255, 0.5)',
+    textShadowColor: 'rgba(255, 60, 172, 0.5)',
     textShadowRadius: 10,
   },
   googleSection: { alignItems: 'center', marginBottom: 25 },
   subText: { color: '#666', marginBottom: 10, fontSize: 13 },
-  gymBadge: { marginTop: 15, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 15, backgroundColor: 'rgba(0, 229, 255, 0.1)', borderWidth: 1, borderColor: '#00E5FF' },
-  gymBadgeText: { color: '#00E5FF', fontSize: 12, fontWeight: 'bold' },
+  gymBadge: { 
+    marginTop: 15, 
+    paddingVertical: 6, 
+    paddingHorizontal: 15, 
+    borderRadius: 15, 
+    backgroundColor: GREEN_FADE, 
+    borderWidth: 1, 
+    borderColor: BRAND_GREEN 
+  },
+  gymBadgeText: { color: BRAND_GREEN, fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
   inputWrapper: { width: '100%', marginBottom: 18 },
   row: { flexDirection: 'row', width: '100%' },
-  label: { color: '#00E5FF', fontSize: 12, marginBottom: 6, marginLeft: 4, fontWeight: '600' },
-  neonInput: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', color: '#fff', paddingHorizontal: 15 },
-  passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
+  label: { color: BRAND_PINK, fontSize: 12, marginBottom: 6, marginLeft: 4, fontWeight: '600' },
+  neonInput: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: PINK_FADE, color: '#fff', paddingHorizontal: 15 },
+  passwordContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: PINK_FADE },
   passwordInput: { flex: 1, height: 50, color: '#fff', paddingHorizontal: 15 },
-  showHideText: { color: '#00E5FF', fontSize: 10, fontWeight: 'bold', paddingRight: 15 },
-  phoneContainer: { flexDirection: 'row', height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', overflow: 'hidden' },
-  countryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#111', borderRightWidth: 1, borderRightColor: 'rgba(0, 229, 255, 0.1)' },
+  showHideText: { color: BRAND_PINK, fontSize: 10, fontWeight: 'bold', paddingRight: 15 },
+  phoneContainer: { flexDirection: 'row', height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: PINK_FADE, overflow: 'hidden' },
+  countryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#111', borderRightWidth: 1, borderRightColor: PINK_FADE },
   flag: { width: 25, height: 18, marginRight: 8, borderRadius: 2 },
-  callingCode: { color: '#00E5FF', fontWeight: 'bold' },
+  callingCode: { color: BRAND_PINK, fontWeight: 'bold' },
   phoneInput: { flex: 1, color: '#fff', paddingHorizontal: 15 },
-  dateBtn: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', justifyContent: 'center', paddingHorizontal: 15 },
+  dateBtn: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: PINK_FADE, justifyContent: 'center', paddingHorizontal: 15 },
   dateText: { color: '#fff' },
-  pickerContainer: { backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)', overflow: 'hidden' },
-  submitBtn: { width: '100%', height: 55, backgroundColor: '#000', borderRadius: 15, borderWidth: 2, borderColor: '#00E5FF', justifyContent: 'center', alignItems: 'center', marginTop: 10 },
-  submitBtnText: { color: '#00E5FF', fontSize: 16, fontWeight: 'bold', letterSpacing: 2 },
+  pickerContainer: { backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: PINK_FADE, overflow: 'hidden' },
+  submitBtn: { width: '100%', height: 55, backgroundColor: '#000', borderRadius: 15, borderWidth: 2, borderColor: BRAND_PINK, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
+  submitBtnText: { color: BRAND_PINK, fontSize: 16, fontWeight: 'bold', letterSpacing: 2 },
   backToLoginBtn: { marginTop: 25, paddingVertical: 10, alignItems: 'center', width: '100%' },
   backToLoginText: { color: '#666', fontSize: 14, fontWeight: '500' },
-  backToLoginHighlight: { color: '#00E5FF', fontWeight: 'bold', textDecorationLine: 'underline' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-  closeModalBtn: { width: 35, height: 35, borderRadius: 10, backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 15 }
+  backToLoginHighlight: { color: BRAND_GREEN, fontWeight: 'bold', textDecorationLine: 'underline' },
+  modalHeaderCustom: { 
+    padding: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#222',
+    backgroundColor: '#000',
+    alignItems: 'center'
+  },
+  modalHeaderTitle: { 
+    color: '#fff', 
+    fontSize: 18, 
+    fontWeight: 'bold' 
+  }
 });
 
 

@@ -1,27 +1,26 @@
 @echo off
-set ADB_PATH=C:\Users\INFEMOV\AppData\Local\Android\Sdk\platform-tools\adb.exe
+set ADB_PATH="C:\Users\PC\AppData\Local\Android\Sdk\platform-tools\adb.exe"
 set PACKAGE=com.infemov.appmovil
-set DB_NAME=bdMovil
-set LOCAL_NAME=db_proyecto.db
+set DB_NAME=bdMovilFinal
+set LOCAL_NAME=db_proyecto_final.db
+set REMOTE_PATH=/data/data/%PACKAGE%/files/SQLite/%DB_NAME%
 
-echo 🔄 Generando copia limpia de la base de datos...
+echo 🔄 1. Consolidando TODAS las tablas (Root Checkpoint)...
+:: Ejecutamos el checkpoint como root para saltar restricciones de la app
+%ADB_PATH% shell "su 0 sqlite3 %REMOTE_PATH% 'PRAGMA wal_checkpoint(TRUNCATE);'"
 
-:: 1. Crear una copia en una ruta neutral usando SQLite para 'volcar' el contenido
-%ADB_PATH% shell "su 0 sqlite3 /data/data/%PACKAGE%/files/SQLite/%DB_NAME% '.backup /sdcard/copia_limpia.db'"
+echo 📁 2. Creando copia integra de la base de datos...
+%ADB_PATH% shell "su 0 cp %REMOTE_PATH% /sdcard/full_sync.db"
+%ADB_PATH% shell "su 0 chmod 777 /sdcard/full_sync.db"
 
-:: 2. Dar permisos a esa copia
-%ADB_PATH% shell "su 0 chmod 777 /sdcard/copia_limpia.db"
-
-:: 3. Borrar el archivo viejo en tu PC
+echo 📥 3. Descargando a PC...
 if exist %LOCAL_NAME% del /f /q %LOCAL_NAME%
-
-:: 4. Traer la copia limpia
-%ADB_PATH% pull /sdcard/copia_limpia.db ./%LOCAL_NAME%
+%ADB_PATH% pull /sdcard/full_sync.db ./%LOCAL_NAME%
 
 echo.
 if exist %LOCAL_NAME% (
-    echo ✅ EXITO: Archivo descargado con respaldo completo.
+    echo ✅ EXITO: Base de datos completa sincronizada.
 ) else (
-    echo ❌ ERROR: Fallo al descargar.
+    echo ❌ ERROR: Fallo la descarga.
 )
 pause

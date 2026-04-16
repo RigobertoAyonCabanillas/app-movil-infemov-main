@@ -12,13 +12,20 @@ import {
   Dimensions, 
   KeyboardAvoidingView, 
   Platform, 
-  ScrollView 
+  ScrollView,
+  StatusBar // Añadido para controlar la barra de estado
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context'; // Importante para los bordes del móvil
 import { UserContext } from "../components/UserContext";
 import { useAuthService } from "@/servicesdb/authService";
 import { validarFolioAPI } from "@/services/api";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const BRAND_PINK = '#FF3CAC'; 
+const BRAND_GREEN = '#39FF14'; 
+const PINK_FADE = 'rgba(255, 60, 172, 0.3)';
+const GREEN_FADE = 'rgba(57, 255, 20, 0.1)';
 
 export default function Login() {
   const { setUsers } = useContext(UserContext);
@@ -39,12 +46,10 @@ export default function Login() {
   const handleLogin = async () => {
     const email = emailRef.current;
     const password = passwordRef.current;
-
     if (!email.trim() || !password.trim()) {
       Alert.alert("Atención", "Por favor, ingresa tus credenciales");
       return;
     }
-
     try {
       setLoadingLogin(true);
       const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected!);
@@ -80,291 +85,215 @@ export default function Login() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.mainContainer}
-    >
-      <ScrollView 
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.mainContainer}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
       >
-        <View style={styles.contentWrapper}>
-          <View style={styles.neonPanel}>
-            {!folioValidado ? (
-              <>
-                <Text style={styles.neonTitle}>Bienvenido</Text>
-                <Text style={styles.subTitleText}>
-                  Ingresa el folio de tu gimnasio para continuar
-                </Text>
-                
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.neonInput}
-                    placeholder="Folio de Acceso"
-                    placeholderTextColor="rgba(0, 229, 255, 0.4)"
-                    value={folio}
-                    onChangeText={setFolio}
-                    autoCapitalize="characters"
-                    // Esto ayuda a que el sistema sepa que es un campo de texto activo
-                    importantForAutofill="no" 
-                  />
-                </View>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <View style={styles.contentWrapper}>
+            <View style={styles.neonPanel}>
+              {!folioValidado ? (
+                <>
+                  <Text style={styles.neonTitle}>Bienvenido</Text>
+                  <Text style={styles.subTitleText}>Ingresa el folio de tu gimnasio para continuar</Text>
+                  
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.neonInput}
+                      placeholder="Folio de Acceso"
+                      placeholderTextColor="#444" 
+                      value={folio}
+                      onChangeText={setFolio}
+                      keyboardType="numeric" 
+                    />
+                  </View>
 
-                <TouchableOpacity 
-                  style={styles.neonButton} 
-                  onPress={manejarValidacionFolio} 
-                  disabled={cargandoFolio}
-                >
-                  {cargandoFolio ? (
-                    <ActivityIndicator color="#00E5FF" />
-                  ) : (
-                    <Text style={styles.buttonText}>CONTINUAR</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.neonTitle}>Login</Text>
-                <View style={styles.gymBadge}>
-                  <Text style={styles.gymBadgeText}>Gimnasio: {nombreGimnasio}</Text>
-                </View>
+                  <TouchableOpacity style={styles.neonButton} onPress={manejarValidacionFolio} disabled={cargandoFolio}>
+                    {cargandoFolio ? <ActivityIndicator color={BRAND_GREEN} /> : <Text style={styles.buttonText}>CONTINUAR</Text>}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.neonTitle}>Login</Text>
+                  
+                  <View style={styles.gymBadge}>
+                    <Text style={styles.gymBadgeText}>{nombreGimnasio}</Text>
+                  </View>
 
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.neonInput}
-                    placeholder="Correo Electrónico"
-                    placeholderTextColor="rgba(0, 229, 255, 0.4)"
-                    onChangeText={(text) => (emailRef.current = text)}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                  <TextInput
-                    style={[styles.neonInput, { marginTop: 15 }]}
-                    placeholder="Contraseña"
-                    placeholderTextColor="rgba(0, 229, 255, 0.4)"
-                    secureTextEntry
-                    onChangeText={(text) => (passwordRef.current = text)}
-                  />
-                </View>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.neonInput}
+                      placeholder="Correo Electrónico"
+                      placeholderTextColor="#444"
+                      onChangeText={(text) => (emailRef.current = text)}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                    <TextInput
+                      style={[styles.neonInput, { marginTop: 15 }]}
+                      placeholder="Contraseña"
+                      placeholderTextColor="#444"
+                      secureTextEntry
+                      onChangeText={(text) => (passwordRef.current = text)}
+                    />
+                  </View>
 
-                <TouchableOpacity style={styles.neonButton} onPress={handleLogin} disabled={loadingLogin}>
-                  {loadingLogin ? (
-                    <ActivityIndicator color="#00E5FF" />
-                  ) : (
-                    <Text style={styles.buttonText}>ENTRAR</Text>
-                  )}
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.neonButton} onPress={handleLogin} disabled={loadingLogin}>
+                    {loadingLogin ? <ActivityIndicator color={BRAND_PINK} /> : <Text style={styles.buttonText}>ENTRAR</Text>}
+                  </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setFolioValidado(false)} style={styles.linkButton}>
-                  <Text style={styles.linkText}>Cambiar de gimnasio</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setFolioValidado(false)} style={styles.changeGymButton}>
+                    <Text style={styles.changeGymText}>CAMBIAR DE GIMNASIO</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => router.push({ pathname: "/register", params: { gymId: gymSelected, gymNombre: nombreGimnasio } })}>
-                  <Text style={styles.registerText}>¿No tienes cuenta? Registro</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                  <View style={styles.registerWrapper}>
+                    <Text style={styles.noAccountText}>¿Eres nuevo? </Text>
+                    <TouchableOpacity onPress={() => router.push({ pathname: "/register", params: { gymId: gymSelected, gymNombre: nombreGimnasio } })}>
+                      <Text style={styles.registerLink}>Regístrate aquí</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* MODAL NEÓN */}
       <Modal visible={showConfirmModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.neonModal}>
             <Text style={styles.modalTitle}>¿Confirmar Gimnasio?</Text>
-            <Text style={styles.modalBody}>
-              Vas a entrar a:{"\n"}
-              <Text style={styles.modalGymName}>{nombreGimnasio}</Text>
-            </Text>
-            
+            <View style={styles.modalInfoRow}>
+              <View style={{flex: 1}}>
+                <Text style={styles.modalGymName}>{nombreGimnasio}</Text>
+                <Text style={styles.modalSubText}>este es tu gimnasio</Text>
+              </View>
+              <View style={styles.imagePlaceholder} />
+            </View>
             <View style={styles.modalButtonsRow}>
-              <TouchableOpacity onPress={() => setShowConfirmModal(false)} style={styles.modalSecondaryButton}>
-                <Text style={styles.modalSecondaryText}>Cancelar</Text>
+              <TouchableOpacity onPress={() => setShowConfirmModal(false)} style={styles.modalCancelBtn}>
+                <Text style={{color: '#888', fontWeight: 'bold'}}>Cancelar</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => { setShowConfirmModal(false); setFolioValidado(true); }}
-                style={styles.modalPrimaryButton}
-              >
-                <Text style={styles.modalPrimaryText}>Sí, entrar</Text>
+              <TouchableOpacity onPress={() => { setShowConfirmModal(false); setFolioValidado(true); }} style={styles.modalConfirmBtn}>
+                <Text style={{color: BRAND_GREEN, fontWeight: 'bold'}}>Sí, entrar</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  mainContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  // Cambiado a flex: 1 y fondo negro total
+  mainContainer: { flex: 1, backgroundColor: '#000' },
+  scrollContainer: { 
+    flexGrow: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
     paddingVertical: 20,
+    backgroundColor: '#000' // Aseguramos que el fondo del scroll sea negro
   },
-  contentWrapper: {
-    width: SCREEN_WIDTH,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
+  contentWrapper: { width: SCREEN_WIDTH, alignItems: 'center', paddingHorizontal: 20 },
+  
   neonPanel: {
     width: '100%',
-    backgroundColor: '#111',
+    backgroundColor: '#0A0A0A',
     borderRadius: 25,
     padding: 30,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.5)',
-    shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
+    borderWidth: 3,
+    borderColor: BRAND_PINK,
+    shadowColor: BRAND_PINK,
+    shadowRadius: 15,
+    elevation: 10,
   },
-  neonTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#00E5FF',
+  neonTitle: { 
+    fontSize: 38, 
+    fontWeight: 'bold', 
+    color: BRAND_PINK, 
     marginBottom: 10,
-    textShadowColor: 'rgba(0, 229, 255, 0.5)',
-    textShadowRadius: 10,
+    textShadowColor: 'rgba(255, 60, 172, 0.5)',
+    textShadowRadius: 10 
   },
-  subTitleText: {
-    color: '#888',
-    textAlign: 'center',
-    marginBottom: 30,
-    fontSize: 14,
-  },
+  subTitleText: { color: '#888', textAlign: 'center', marginBottom: 25, fontSize: 14 },
   gymBadge: {
-    backgroundColor: 'rgba(0, 229, 255, 0.1)',
-    paddingHorizontal: 15,
-    paddingVertical: 5,
-    borderRadius: 20,
+    backgroundColor: GREEN_FADE,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.3)',
-    marginBottom: 20,
-  },
-  gymBadgeText: {
-    color: '#00E5FF',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  inputContainer: {
-    width: '100%',
+    borderColor: BRAND_GREEN,
     marginBottom: 25,
   },
-  neonInput: {
-    width: '100%',
-    height: 55,
-    backgroundColor: '#000',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.4)',
-    color: '#FFF',
-    paddingHorizontal: 15,
-    fontSize: 16,
-  },
-  neonButton: {
-    width: '100%',
-    height: 55,
-    backgroundColor: '#000',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#00E5FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  buttonText: {
-    color: '#00E5FF',
-    fontSize: 16,
-    fontWeight: 'bold',
+  gymBadgeText: { 
+    color: BRAND_GREEN,
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
-  linkButton: {
-    marginTop: 20,
+  inputContainer: { width: '100%', marginBottom: 25 },
+  neonInput: { 
+    width: '100%', 
+    height: 55, 
+    backgroundColor: '#000', 
+    borderRadius: 12, 
+    borderWidth: 1.5, 
+    borderColor: PINK_FADE, 
+    color: '#FFF', 
+    paddingHorizontal: 15, 
+    fontSize: 16 
   },
-  linkText: {
-    color: '#666',
-    fontSize: 14,
-  },
-  registerText: {
-    color: '#00E5FF',
-    fontWeight: 'bold',
-    marginTop: 15,
-    fontSize: 15,
-    opacity: 0.8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
+  neonButton: { 
+    width: '100%', 
+    height: 55, 
+    backgroundColor: '#000', 
+    borderRadius: 12, 
+    borderWidth: 2, 
+    borderColor: BRAND_GREEN, 
+    justifyContent: 'center', 
     alignItems: 'center',
   },
-  neonModal: {
-    width: '85%',
-    backgroundColor: '#080808',
-    borderRadius: 20,
-    padding: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.5)',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-  },
-  modalBody: {
-    color: '#AAA',
-    textAlign: 'center',
-    marginBottom: 25,
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  modalGymName: {
-    color: '#00E5FF',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  modalButtonsRow: {
-    flexDirection: 'row',
-    width: '100%',
-  },
-  modalSecondaryButton: {
-    flex: 1,
-    padding: 15,
-    marginRight: 10,
+  buttonText: { color: BRAND_GREEN, fontWeight: 'bold', letterSpacing: 2, fontSize: 16 },
+  changeGymButton: {
+    marginTop: 25,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: BRAND_GREEN,
+    backgroundColor: 'transparent',
   },
-  modalSecondaryText: {
-    color: '#888',
-    textAlign: 'center',
-    fontWeight: 'bold',
+  changeGymText: { 
+    color: BRAND_GREEN, 
+    fontSize: 12, 
+    fontWeight: 'bold', 
+    letterSpacing: 1,
   },
-  modalPrimaryButton: {
-    flex: 1,
-    padding: 15,
-    backgroundColor: '#000',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#00E5FF',
+  registerWrapper: { flexDirection: 'row', marginTop: 30, alignItems: 'center' },
+  noAccountText: { color: '#888', fontSize: 14 },
+  registerLink: { 
+    color: BRAND_GREEN,
+    fontWeight: 'bold', 
+    fontSize: 15, 
+    textDecorationLine: 'underline',
   },
-  modalPrimaryText: {
-    color: '#00E5FF',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
+  neonModal: { width: '85%', backgroundColor: '#0A0A0A', borderRadius: 25, padding: 25, borderWidth: 2, borderColor: BRAND_PINK },
+  modalTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  modalInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
+  modalGymName: { color: BRAND_PINK, fontWeight: 'bold', fontSize: 22, textTransform: 'uppercase' },
+  modalSubText: { color: '#666', fontSize: 13, marginTop: 5 },
+  imagePlaceholder: { width: 70, height: 70, borderRadius: 12, backgroundColor: '#111', marginLeft: 10, borderWidth: 1, borderColor: '#333' },
+  modalButtonsRow: { flexDirection: 'row', gap: 10 },
+  modalCancelBtn: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#333' },
+  modalConfirmBtn: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 2, borderColor: BRAND_GREEN }
 });

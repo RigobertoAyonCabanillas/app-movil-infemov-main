@@ -1,12 +1,13 @@
-import { useMemo, useContext } from 'react';
-import { useSQLiteContext } from 'expo-sqlite';
-import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from '@/db/schema';
-import { actualizarPerfilApi, cancelarInscripcion, desencriptarDatos, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, inscribirAClase, obtenerClasesGimnasio, obtenerDatosPerfil, obtenerMisClases, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api'; 
-import { router } from "expo-router";
-import { eq, and, sql } from 'drizzle-orm'; 
-import { UserContext } from "../components/UserContext"; 
+import { actualizarPerfilApi, cancelarInscripcion, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, inscribirAClase, obtenerClasesGimnasio, obtenerDatosPerfil, obtenerMisClases, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { eq, sql, ne } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/expo-sqlite';
+import * as Crypto from 'expo-crypto'; // 1. Importar Crypto
+import { router } from "expo-router";
+import { useSQLiteContext } from 'expo-sqlite';
+import { useContext, useMemo } from 'react';
+import { UserContext } from "../components/UserContext";
 
 //EL MAPA VA AQUÍ (AFUERA), sin 'export' si solo lo usas aquí, 
 // o con 'export' si lo vas a importar en otro archivo.
@@ -63,23 +64,28 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
     const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
-      // 1. LIMPIEZA TOTAL
+      // 2. GENERAR EL HASH DE LA CONTRASEÑA
+      // Usamos SHA-256 para convertir "Bana123456" en una cadena alfanumérica larga
+      const passwordHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        password
+      );
+
+      // 3. LIMPIEZA TOTAL
       await drizzleDb.delete(schema.usersdb);
 
-      // Extraemos el Rol directamente de la respuesta (según tu log: 'Cliente' o 'Coach')
       const rolUsuario = respuestaApi.Rol || "Cliente"; 
 
-      // 2. INSERTAR en SQLite (Asegúrate de tener la columna 'rol' en tu schema)
+      // 4. INSERTAR en SQLite usando el passwordHash
       await drizzleDb.insert(schema.usersdb).values({
         id: respuestaApi.Id, 
         token: respuestaApi.Token,
         correo: email,
-        contrasena: password,
+        contrasena: passwordHash, // <-- Guardamos el hash, no la contraseña real
         nombres: respuestaApi.Nombres || "", 
         apellidoPaterno: respuestaApi.ApellidoPaterno || "",
         apellidoMaterno: respuestaApi.ApellidoMaterno || "",
         gymId: respuestaApi.GimnasioActual || gymSelected,
-        // AGREGAMOS EL ROL AQUÍ
         rol: rolUsuario, 
         estudiante: "",
         fechaNacimiento: "",
@@ -87,18 +93,17 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         deviceId: respuestaApi.DeviceId || "",
       });
 
-      // 3. ACTUALIZAR ESTADO GLOBAL (Contexto)
-      // Agregamos el rol para que las pantallas como 'reservaciones.tsx' cambien su lógica
+      // 5. ACTUALIZAR ESTADO GLOBAL
       setUsers({ 
         id: respuestaApi.Id,
         token: respuestaApi.Token,
         gymId: respuestaApi.GimnasioActual || gymSelected,
         nombres: respuestaApi.Nombres || "",
         correo: email,
-        rol: rolUsuario // <-- Ahora el contexto sabe quién es quién
+        rol: rolUsuario
       }); 
 
-      console.log(`✅ Sesión iniciada: ID ${respuestaApi.Id} | Rol: ${rolUsuario}`);
+      console.log(`✅ Sesión iniciada y contraseña hasheada localmente.`);
     }
 
     return respuestaApi;
@@ -244,14 +249,17 @@ const obtenerMembresiasLocal = async (usuarioId: number) => {
 // --- 5. PROCESAR Y GUARDAR (LLAMA AL API Y GUARDA EN SQLITE) ---
 const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: number) => {
     try {
+        // 1. Obtener datos nuevos del API primero
         const membresiasApi = await sincronizarMembresiasDesdeApi(usuarioId, gymId);
         
-        // Log para ver qué está llegando realmente
-        console.log(`📡 Datos recibidos del Gym ${gymId}:`, membresiasApi?.length || 0);
-
-        // 1. Borramos solo lo de este usuario (Limpieza total antes de refrescar)
+        // 2. LIMPIEZA: Borrar registros de OTROS usuarios 
+        // Esto evita que la BD crezca con basura de sesiones viejas
+        await drizzleDb.delete(schema.membresiasdb).where(ne(schema.membresiasdb.userId, usuarioId));
+        
+        // 3. REFRESCO: Borrar lo que este usuario ya tenía para evitar duplicados
         await drizzleDb.delete(schema.membresiasdb).where(eq(schema.membresiasdb.userId, usuarioId));
 
+        // 4. INSERCIÓN
         if (membresiasApi && membresiasApi.length > 0) {
             const dataToInsert = membresiasApi.map((m: any) => ({
                 folioMembresia: (m.FolioMembresia || m.folio || "").toString(),
@@ -260,14 +268,20 @@ const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: numbe
                 fechaFin: m.FechaExpiracion || m.fechaFin || "", 
                 estatus: (m.Estatus === "Activo" || m.estatus === 1) ? 1 : 0,
                 userId: usuarioId,
-                gymId: gymId // <--- AHORA SÍ SE GUARDA EL GYM
+                gymId: gymId 
             }));
 
             await drizzleDb.insert(schema.membresiasdb).values(dataToInsert);
-            console.log("✅ Membresías guardadas en SQLite");
+            console.log("✅ SQLite limpio y actualizado para el usuario:", usuarioId);
         }
+
+        // 5. Mantenimiento del archivo físico (fuera de la lógica principal)
+        setTimeout(async () => {
+            await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
+        }, 1000);
+
     } catch (error) {
-        console.error("❌ Error en actualización local:", error);
+        console.error("❌ Error en limpieza/actualización:", error);
     }
 };
 
@@ -291,16 +305,19 @@ const obtenerCreditosLocal = async (usuarioId: number) => {
 // --- 6. PROCESAR Y GUARDAR CRÉDITOS (API -> SQLITE) ---
 const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number) => {
     try {
-        // 2. Sincronizar desde API (ya no necesita token aquí, fetchSeguro lo hace)
+        // 1. Sincronizar desde API
         const creditosApi = await sincronizarCreditosDesdeApi(usuarioId, gymId);
-
         console.log(`📡 API Créditos: Recibidos ${creditosApi?.length || 0} registros.`);
 
-        // 3. Limpiar créditos viejos del usuario en la DB local
+        // 2. LIMPIEZA ATÓMICA:
+        // Primero: Borramos créditos de otros usuarios (los "fantasmas")
+        await drizzleDb.delete(schema.creditosdb).where(ne(schema.creditosdb.userId, usuarioId));
+
+        // Segundo: Borramos lo que este usuario ya tenía para refrescar con lo nuevo
         await drizzleDb.delete(schema.creditosdb).where(eq(schema.creditosdb.userId, usuarioId));
 
         if (creditosApi && creditosApi.length > 0) {
-            // 4. Usamos un mapeo para insertar todo de golpe (más eficiente)
+            // 3. Mapeo de inserción
             const dataToInsert = creditosApi.map((c: any) => ({
                 folioCredito: (c.FolioCredito || c.folio || "").toString(),
                 paquete: c.Paquete || c.paquete || "Paquete General",
@@ -308,15 +325,25 @@ const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number
                 fechaExpiracion: c.FechaExpiracion || c.fechaVencimiento || "",
                 estatus: (c.Estatus === "Activo" || c.estatus === 1) ? 1 : 0,
                 userId: usuarioId,
-                gymId: gymId // <--- AHORA SÍ GUARDAMOS EL GYM
+                gymId: gymId 
             }));
 
             await drizzleDb.insert(schema.creditosdb).values(dataToInsert);
-            
             console.log(`✅ Créditos actualizados en SQLite para Gym ${gymId}`);
         } else {
             console.warn(`⚠️ No hay créditos para el Gym ${gymId} en el servidor.`);
         }
+
+        // 4. Mantenimiento físico (para que DB Browser vea los cambios real)
+        setTimeout(async () => {
+            try {
+                await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
+                console.log("✅ Archivo físico de Créditos consolidado.");
+            } catch (e) {
+                // Si está ocupada, no pasa nada, se consolidará en la siguiente acción
+            }
+        }, 800);
+
     } catch (error) {
         console.error("❌ Error al actualizar Créditos localmente:", error);
     }

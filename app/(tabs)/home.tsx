@@ -6,11 +6,15 @@ import { UserContext } from '../../components/UserContext';
 // Importamos el servicio de sincronización
 import { useAuthService } from "@/servicesdb/authService";
 
+// Colores unificados de la marca
+const BRAND_PINK = '#FF3CAC'; 
+const BRAND_GREEN = '#39FF14'; 
+const CARD_BG = '#0A0A0A'; // Fondo ligeramente más claro que el negro absoluto
+
 export default function Home() {
   const { users } = useContext(UserContext);
   const { sincronizarPerfil } = useAuthService();
 
-  // Mantenemos tu lógica intacta para el manejo de sesión
   useFocusEffect(
     useCallback(() => {
       const currentId = users?.id || users?.Id;
@@ -33,7 +37,7 @@ export default function Home() {
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <StatusBar barStyle="light-content" />
 
-      {/* Saludo simple: Usa el nombre del contexto si existe, si no, "Atleta" */}
+      {/* Saludo: Ahora el nombre utiliza el Rosa Neón para resaltar */}
       <View style={styles.header}>
         <Text style={styles.welcomeText}>Bienvenido de vuelta,</Text>
         <Text style={styles.userName}>
@@ -41,7 +45,7 @@ export default function Home() {
         </Text>
       </View>
 
-      {/* Tarjeta de estado: Información general que no satura */}
+      {/* Tarjeta de estado: Mantiene el Verde para indicar que "todo está bien" */}
       <View style={styles.mainCard}>
         <View style={styles.accentLine} />
         <View style={styles.cardContent}>
@@ -53,12 +57,13 @@ export default function Home() {
         </View>
       </View>
 
-      {/* Sección de avisos generales */}
+      {/* Sección de avisos */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Novedades del Centro</Text>
       </View>
 
       <View style={styles.newsItem}>
+        {/* El punto de noticia ahora es Rosa para captar la atención */}
         <View style={styles.newsDot} />
         <View>
           <Text style={styles.newsTextMain}>Horarios Actualizados</Text>
@@ -87,29 +92,37 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   userName: {
-    color: '#FFFFFF',
+    color: BRAND_PINK, // Nombre resaltado en Rosa
     fontSize: 32,
     fontWeight: 'bold',
+    textShadowColor: 'rgba(255, 60, 172, 0.3)',
+    textShadowRadius: 8,
   },
   mainCard: {
-    backgroundColor: '#111111',
+    backgroundColor: CARD_BG,
     borderRadius: 16,
     flexDirection: 'row',
     marginBottom: 45,
     borderWidth: 1,
-    borderColor: '#222222',
+    borderColor: '#1A1A1A',
     overflow: 'hidden',
+    // Sutil brillo verde en la tarjeta
+    shadowColor: BRAND_GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
   },
   accentLine: {
-    width: 4,
-    backgroundColor: '#39FF14',
+    width: 5,
+    backgroundColor: BRAND_GREEN, // Línea de estado en Verde
   },
   cardContent: {
     padding: 20,
   },
   cardTitle: {
-    color: '#39FF14',
-    fontSize: 10,
+    color: BRAND_GREEN,
+    fontSize: 11,
     fontWeight: 'bold',
     letterSpacing: 1.5,
     marginBottom: 8,
@@ -120,7 +133,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   cardDetail: {
-    color: '#666666',
+    color: '#888888',
     fontSize: 13,
     marginTop: 4,
   },
@@ -135,18 +148,21 @@ const styles = StyleSheet.create({
   newsItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0A0A0A',
+    backgroundColor: CARD_BG,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: '#1A1A1A',
   },
   newsDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#00FFFF',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BRAND_PINK, // Notificación en Rosa
     marginRight: 15,
+    shadowColor: BRAND_PINK,
+    shadowRadius: 4,
+    elevation: 2,
   },
   newsTextMain: {
     color: '#EEEEEE',
@@ -154,7 +170,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   newsTextSub: {
-    color: '#555555',
+    color: '#666666',
     fontSize: 12,
     marginTop: 2,
   },
