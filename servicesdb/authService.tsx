@@ -276,9 +276,9 @@ const actualizarBaseDatosLocalMembresia = async (usuarioId: number, gymId: numbe
         }
 
         // 5. Mantenimiento del archivo físico (fuera de la lógica principal)
-        setTimeout(async () => {
-            await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
-        }, 1000);
+        // setTimeout(async () => {
+        //     await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
+        // }, 1000);
 
     } catch (error) {
         console.error("❌ Error en limpieza/actualización:", error);
@@ -335,17 +335,17 @@ const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number
         }
 
         // 4. Mantenimiento físico (para que DB Browser vea los cambios real)
-        setTimeout(async () => {
-            try {
-                await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
-                console.log("✅ Archivo físico de Créditos consolidado.");
-            } catch (e) {
-                // Si está ocupada, no pasa nada, se consolidará en la siguiente acción
-            }
-        }, 800);
+        // setTimeout(async () => {
+        //     try {
+        //         await drizzleDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
+        //         console.log("✅ Archivo físico de Créditos consolidado.");
+        //     } catch (e) {
+        //         // Si está ocupada, no pasa nada, se consolidará en la siguiente acción
+        //     }
+        // }, 800);
 
     } catch (error) {
-        console.error("❌ Error al actualizar Créditos localmente:", error);
+        console.error("❌ Error al actualizar Créditos localmente:", error);  
     }
 };
 

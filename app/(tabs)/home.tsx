@@ -1,177 +1,167 @@
 import { useFocusEffect } from "expo-router";
-import { useContext, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
+import { useContext, useCallback, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
 import { UserContext } from '../../components/UserContext'; 
-
-// Importamos el servicio de sincronización
 import { useAuthService } from "@/servicesdb/authService";
+import { parse, isBefore } from 'date-fns';
 
-// Colores unificados de la marca
 const BRAND_PINK = '#FF3CAC'; 
 const BRAND_GREEN = '#39FF14'; 
-const CARD_BG = '#0A0A0A'; // Fondo ligeramente más claro que el negro absoluto
+const CARD_BG = '#0A0A0A'; 
 
 export default function Home() {
   const { users } = useContext(UserContext);
-  const { sincronizarPerfil } = useAuthService();
+  const { 
+    sincronizarPerfil, 
+    actualizarBaseDatosLocalMembresia, 
+    actualizarBaseDatosLocalCreditos,
+    obtenerMisClasesProceso 
+  } = useAuthService();
+
+  const [misReservas, setMisReservas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // REF para evitar el bucle infinito
+  const isSyncing = useRef(false);
+
+  const cargarInformacionHome = async () => {
+    // Evitamos ejecuciones duplicadas si ya hay una en curso
+    if (isSyncing.current) return;
+
+    const currentId = users?.id || users?.Id;
+    const currentCorreo = users?.correo || users?.Correo;
+    const currentGymId = users?.gymId || users?.GimnasioActual;
+
+    if (!currentId || !currentCorreo) return;
+
+    try {
+      isSyncing.current = true;
+      setLoading(true);
+
+      console.log("🔄 Sincronizando Home...");
+      
+      // Ejecutamos las promesas
+      await sincronizarPerfil(currentId, currentCorreo);
+      await actualizarBaseDatosLocalMembresia(currentId, currentGymId);
+      await actualizarBaseDatosLocalCreditos(currentId, currentGymId);
+
+      const clases = await obtenerMisClasesProceso(currentId, currentGymId);
+      
+      const ahora = new Date();
+      const clasesFuturas = (clases || []).filter((ins: any) => {
+        try {
+          const fechaLimpia = (ins.dia || ins.fecha || "").split('T')[0];
+          const fechaHoraClase = parse(`${fechaLimpia} ${ins.horaInicio}`, 'yyyy-MM-dd HH:mm:ss', new Date());
+          return !isBefore(fechaHoraClase, ahora);
+        } catch (e) { return false; }
+      });
+
+      setMisReservas(clasesFuturas);
+    } catch (e) {
+      console.error("❌ Error en sincronización:", e);
+    } finally {
+      setLoading(false);
+      isSyncing.current = false;
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
-      const currentId = users?.id || users?.Id;
-      const currentCorreo = users?.correo || users?.Correo;
-
-      if (currentId && currentCorreo && !users?.rol) {
-        console.log("🚀 Sincronización automática en Home detectada...");
-        sincronizarPerfil(currentId, currentCorreo)
-          .then(() => {
-            console.log("✅ Perfil actualizado");
-          })
-          .catch((error) => {
-            console.error("❌ Error en sincronización inicial:", error);
-          });
-      }
-    }, [users])
+      cargarInformacionHome();
+      
+      // Opcional: limpiar al salir de la pantalla
+      return () => {
+        isSyncing.current = false;
+      };
+    }, []) // Dependencias vacías: solo se ejecuta al entrar a la pantalla
   );
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <StatusBar barStyle="light-content" />
 
-      {/* Saludo: Ahora el nombre utiliza el Rosa Neón para resaltar */}
       <View style={styles.header}>
-        <Text style={styles.welcomeText}>Bienvenido de vuelta,</Text>
-        <Text style={styles.userName}>
-          {users?.nombre || users?.Nombre || "Atleta"}
-        </Text>
+        <Text style={styles.welcomeText}>Hola,</Text>
+        <Text style={styles.userName}>{users?.nombre || users?.Nombre || "Atleta"}</Text>
       </View>
 
-      {/* Tarjeta de estado: Mantiene el Verde para indicar que "todo está bien" */}
-      <View style={styles.mainCard}>
-        <View style={styles.accentLine} />
-        <View style={styles.cardContent}>
-          <Text style={styles.cardTitle}>RESUMEN DE HOY</Text>
-          <Text style={styles.cardStatus}>Todo listo para entrenar</Text>
-          <Text style={styles.cardDetail}>
-            {users?.rol === 'Coach' ? 'Revisa tus clases asignadas' : 'No tienes reservaciones pendientes'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Sección de avisos */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Novedades del Centro</Text>
+        <Text style={styles.sectionTitle}>Tu Agenda</Text>
+        {loading && <ActivityIndicator size="small" color={BRAND_GREEN} />}
       </View>
 
-      <View style={styles.newsItem}>
-        {/* El punto de noticia ahora es Rosa para captar la atención */}
-        <View style={styles.newsDot} />
-        <View>
-          <Text style={styles.newsTextMain}>Horarios Actualizados</Text>
-          <Text style={styles.newsTextSub}>Consulta la pestaña de reservaciones para ver cambios.</Text>
+      {misReservas.length > 0 ? (
+        misReservas.map((item, index) => (
+          <View key={index} style={styles.reservaCard}>
+            <View style={styles.reservaInfo}>
+              <Text style={styles.claseNombre}>{item.nombreClase}</Text>
+              <Text style={styles.claseDetalle}>{item.dia} | {item.horaInicio}</Text>
+            </View>
+            <View style={styles.tagLugar}>
+              <Text style={styles.tagText}>
+                {item.lugar === 0 || item.lugar === "0" ? "ESPERA" : `LUGAR ${item.lugar}`}
+              </Text>
+            </View>
+          </View>
+        ))
+      ) : (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>No hay clases próximas hoy.</Text>
         </View>
+      )}
+
+      {/* BANNER DE RELLENO ESTILO GYM */}
+      <View style={styles.promoBanner}>
+        <View style={styles.promoBadge}>
+          <Text style={styles.promoBadgeText}>NUEVO</Text>
+        </View>
+        <Text style={styles.promoTitle}>Reto 21 Días: Verano Neón</Text>
+        <Text style={styles.promoDesc}>Inscríbete en recepción y gana una playera exclusiva.</Text>
       </View>
+
+      <Text style={[styles.sectionTitle, { marginTop: 25, marginBottom: 15 }]}>Explora más</Text>
+      
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        <View style={[styles.infoBox, { borderColor: BRAND_PINK }]}>
+          <Text style={styles.infoTag}>TIP NUTRICIÓN</Text>
+          <Text style={styles.infoTitle}>La hidratación es clave</Text>
+          <Text style={styles.infoText}>Beber agua mejora tu rendimiento un 15%.</Text>
+        </View>
+
+        <View style={[styles.infoBox, { borderColor: BRAND_GREEN }]}>
+          <Text style={styles.infoTag}>TIENDA</Text>
+          <Text style={styles.infoTitle}>Proteína -20%</Text>
+          <Text style={styles.infoText}>Válido en suplementos seleccionados.</Text>
+        </View>
+      </ScrollView>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  contentContainer: {
-    padding: 24,
-    paddingTop: 50,
-  },
-  header: {
-    marginBottom: 35,
-  },
-  welcomeText: {
-    color: '#888888',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  userName: {
-    color: BRAND_PINK, // Nombre resaltado en Rosa
-    fontSize: 32,
-    fontWeight: 'bold',
-    textShadowColor: 'rgba(255, 60, 172, 0.3)',
-    textShadowRadius: 8,
-  },
-  mainCard: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    flexDirection: 'row',
-    marginBottom: 45,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-    overflow: 'hidden',
-    // Sutil brillo verde en la tarjeta
-    shadowColor: BRAND_GREEN,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  accentLine: {
-    width: 5,
-    backgroundColor: BRAND_GREEN, // Línea de estado en Verde
-  },
-  cardContent: {
-    padding: 20,
-  },
-  cardTitle: {
-    color: BRAND_GREEN,
-    fontSize: 11,
-    fontWeight: 'bold',
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  cardStatus: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  cardDetail: {
-    color: '#888888',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  sectionHeader: {
-    marginBottom: 15,
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  newsItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_BG,
-    padding: 16,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-  },
-  newsDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: BRAND_PINK, // Notificación en Rosa
-    marginRight: 15,
-    shadowColor: BRAND_PINK,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  newsTextMain: {
-    color: '#EEEEEE',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  newsTextSub: {
-    color: '#666666',
-    fontSize: 12,
-    marginTop: 2,
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
+  contentContainer: { padding: 24, paddingTop: 50, paddingBottom: 100 },
+  header: { marginBottom: 35 },
+  welcomeText: { color: '#888888', fontSize: 16 },
+  userName: { color: BRAND_PINK, fontSize: 32, fontWeight: 'bold' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  sectionTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
+  reservaCard: { backgroundColor: CARD_BG, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#1A1A1A', marginBottom: 10 },
+  reservaInfo: { flex: 1 },
+  claseNombre: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  claseDetalle: { color: '#888888', fontSize: 13, marginTop: 4 },
+  tagLugar: { backgroundColor: '#000', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: BRAND_GREEN },
+  tagText: { color: BRAND_GREEN, fontSize: 10, fontWeight: 'bold' },
+  emptyCard: { padding: 20, borderRadius: 14, borderStyle: 'dashed', borderWidth: 1, borderColor: '#333', alignItems: 'center' },
+  emptyText: { color: '#666' },
+  promoBanner: { backgroundColor: '#111', borderRadius: 16, padding: 20, marginTop: 20, borderWidth: 1, borderColor: '#222' },
+  promoBadge: { backgroundColor: BRAND_PINK, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginBottom: 10 },
+  promoBadgeText: { color: '#000', fontSize: 10, fontWeight: 'bold' },
+  promoTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  promoDesc: { color: '#AAA', fontSize: 13, marginTop: 5 },
+  horizontalScroll: { marginHorizontal: -24, paddingLeft: 24 },
+  infoBox: { width: 200, backgroundColor: CARD_BG, borderRadius: 14, padding: 15, marginRight: 15, borderTopWidth: 3 },
+  infoTag: { color: '#555', fontSize: 10, fontWeight: 'bold', marginBottom: 5 },
+  infoTitle: { color: '#EEE', fontSize: 15, fontWeight: 'bold' },
+  infoText: { color: '#777', fontSize: 12, marginTop: 5 },
 });

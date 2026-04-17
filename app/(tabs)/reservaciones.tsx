@@ -1,15 +1,17 @@
 import React, { useState, useContext, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert, TouchableOpacity, Dimensions } from 'react-native';
 import { 
   Text, List, Surface, DefaultTheme, 
   Provider as PaperProvider, Portal, Modal, Button, IconButton 
 } from 'react-native-paper';
 import { format, isBefore, parse } from 'date-fns'; 
 import { es } from 'date-fns/locale'; 
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { UserContext } from '../../components/UserContext'; 
 import { useAuthService } from '@/servicesdb/authService';
+
+const { width } = Dimensions.get('window');
 
 interface Clase {
   id: string | number; 
@@ -38,6 +40,7 @@ const COLORS = {
 };
 
 export default function ReservacionesScreen() {
+  const navigation = useNavigation<any>();
   const { users } = useContext(UserContext);
   const gimnasioId = Number(users?.gymId); 
   const usuarioIdActual = Number(users?.id); 
@@ -51,16 +54,11 @@ export default function ReservacionesScreen() {
     obtenerCreditosLocal
   } = useAuthService();
 
-  // --- LÓGICA DE FECHAS CORREGIDA (LUNES A DOMINGO) ---
   const [inicioSemana] = useState(() => {
     const ahora = new Date();
-    // Ajuste para trabajar con la fecha local de Sonora sin desfases de UTC
     const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-    
-    // getDay() devuelve: 0 para Domingo, 1 para Lunes, etc.
     const numeroDia = hoy.getDay(); 
     const diferenciaAlLunes = numeroDia === 0 ? -6 : 1 - numeroDia;
-    
     const lunesBase = new Date(hoy);
     lunesBase.setDate(hoy.getDate() + diferenciaAlLunes);
     lunesBase.setHours(0, 0, 0, 0);
@@ -78,7 +76,6 @@ export default function ReservacionesScreen() {
   const [loading, setLoading] = useState(true);
   const [tieneAcceso, setTieneAcceso] = useState(false);
   
-  // Hoy en formato YYYY-MM-DD para abrir el acordeón por defecto
   const hoyISO = new Date().toISOString().split('T')[0];
   const [expandedId, setExpandedId] = useState<string | null>(hoyISO);
 
@@ -92,10 +89,11 @@ export default function ReservacionesScreen() {
     try {
       const membresias = await obtenerMembresiasLocal(usuarioIdActual);
       const creditos = await obtenerCreditosLocal(usuarioIdActual);
-      setTieneAcceso(membresias.length > 0 || creditos.length > 0);
+      const acceso = (membresias && membresias.length > 0) || (creditos && creditos.length > 0);
+      setTieneAcceso(acceso);
 
       const datosLocales = await sincronizarClasesGimnasio(gimnasioId, usuarioIdActual);
-      const formateadas: Clase[] = datosLocales.map((item: any) => ({
+      const formateadas: Clase[] = (datosLocales || []).map((item: any) => ({
         id: item.claseId, 
         nombre: item.nombreClase,
         horaInicio: item.horaInicio,
@@ -110,9 +108,22 @@ export default function ReservacionesScreen() {
 
       setClasesDisponibles(formateadas);
       const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
-      setMisClasesInscritas(inscripciones);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+
+      const inscripcionesFiltradas = (inscripciones || []).filter((ins: any) => {
+        const fechaRaw = ins.dia || ins.fecha || ins.fechaClase;
+        if (!fechaRaw) return false;
+        try {
+          const fechaString = fechaRaw.includes('T') ? fechaRaw.split('T')[0] : fechaRaw;
+          const fechaClase = parse(fechaString, 'yyyy-MM-dd', new Date());
+          return !isNaN(fechaClase.getTime()) && !isBefore(fechaClase, hoy);
+        } catch (e) { return false; }
+      });
+
+      setMisClasesInscritas(inscripcionesFiltradas);
     } catch (error) {
-      console.error("Error cargando datos:", error);
+      console.error("Error:", error);
     } finally {
       setLoading(false);
     }
@@ -131,9 +142,8 @@ export default function ReservacionesScreen() {
     const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
     if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
 
-    const claseIdNum = Number(clase.id);
     const inscripcionPropia = misClasesInscritas.find(
-      (ins) => Number(ins.claseId || ins.id || ins.clase_ID) === claseIdNum
+      (ins) => Number(ins.claseId || ins.id) === Number(clase.id)
     );
 
     if (inscripcionPropia) {
@@ -185,7 +195,6 @@ export default function ReservacionesScreen() {
         <StatusBar barStyle="light-content" />
         
         <Portal>
-          {/* Modal Lugares */}
           <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
             <View style={styles.filaLugares}>
@@ -205,27 +214,32 @@ export default function ReservacionesScreen() {
             <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
           </Modal>
 
-          {/* Modal Mis Reservaciones */}
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
-            <Text style={styles.modalTitle}>MIS PRÓXIMAS CLASES</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              {misClasesInscritas.length === 0 ? (
-                <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>No tienes reservaciones activas.</Text>
-              ) : (
-                misClasesInscritas.map((ins, index) => (
-                  <View key={index} style={styles.itemGestion}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase}</Text>
-                      <Text style={{ color: COLORS.textSub, fontSize: 12 }}>{ins.dia} | {ins.horaInicio}</Text>
-                    </View>
-                    <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id); }}>
-                      Cancelar
-                    </Button>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-            <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+              <Text style={styles.modalTitle}>MIS PRÓXIMAS CLASES</Text>
+              <ScrollView style={{ maxHeight: 400 }}>
+                {misClasesInscritas.length === 0 ? (
+                  <Text style={{ color: COLORS.textSub, textAlign: 'center', marginVertical: 20 }}>No tienes reservaciones activas.</Text>
+                ) : (
+                  misClasesInscritas.map((ins, index) => {
+                    const esEspera = (ins.lugar === 0 || ins.lugar === "0");
+                    return (
+                      <View key={index} style={styles.itemGestion}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase}</Text>
+                          <Text style={{ color: COLORS.textSub, fontSize: 12 }}>{ins.dia} | {ins.horaInicio}</Text>
+                          <Text style={{ color: esEspera ? COLORS.espera : COLORS.inscrito, fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                              {esEspera ? '● EN ESPERA' : `● LUGAR: ${ins.lugar}`}
+                          </Text>
+                        </View>
+                        <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id); }}>
+                          Cancelar
+                        </Button>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+              <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
           </Modal>
         </Portal>
 
@@ -237,9 +251,22 @@ export default function ReservacionesScreen() {
           </View>
         </Surface>
 
+        {/* BANNER PREMIUM DE COMPRA */}
         {!tieneAcceso && !loading && (
-          <Surface style={styles.noAccessBanner}>
-             <Text style={styles.noAccessText}>⚠️ No tienes membresía activa o créditos.</Text>
+          <Surface style={styles.premiumBanner} elevation={5}>
+            <View style={styles.bannerInner}>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.premiumTitle}>SIN ACCESO ACTIVO</Text>
+                <Text style={styles.premiumSub}>Consigue un plan para reservar tu clase</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.premiumBtn}
+                onPress={() => navigation.navigate('(settings)', { screen: 'metodospago' })}
+              >
+                <IconButton icon="cart" iconColor="#000" size={18} style={{margin: 0}} />
+                <Text style={styles.premiumBtnText}>TIENDA</Text>
+              </TouchableOpacity>
+            </View>
           </Surface>
         )}
 
@@ -275,9 +302,7 @@ export default function ReservacionesScreen() {
                         style={[styles.listItem, { borderLeftColor: esPasada ? COLORS.pasadoBorder : estado.color }]}
                         right={() => (
                           <View style={styles.rightContainer}>
-                            {esPasada ? (
-                              <View style={styles.boxPasado}><Text style={styles.textPasado}>PASADO</Text></View>
-                            ) : (
+                            {!esPasada && (
                               <>
                                 <Text style={{ color: estado.color, fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>{estado.label}</Text>
                                 <Button 
@@ -288,7 +313,14 @@ export default function ReservacionesScreen() {
                                         ejecutarCancelacion(clase.id);
                                       } else {
                                         if (!tieneAcceso) {
-                                            Alert.alert("Aviso", "Necesitas una membresía o créditos.");
+                                            Alert.alert(
+                                              "Acceso Denegado", 
+                                              "No cuentas con membresía o créditos para reservar. ¿Deseas ir a la tienda?",
+                                              [
+                                                { text: "Cancelar", style: "cancel" },
+                                                { text: "Ir a Tienda", onPress: () => navigation.navigate('(settings)', { screen: 'metodospago' }) }
+                                              ]
+                                            );
                                             return;
                                         }
                                         setClaseSeleccionada(clase);
@@ -301,6 +333,9 @@ export default function ReservacionesScreen() {
                                   {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : 'Inscribir'}
                                 </Button>
                               </>
+                            )}
+                            {esPasada && (
+                                <View style={styles.boxPasado}><Text style={styles.textPasado}>PASADO</Text></View>
                             )}
                           </View>
                         )}
@@ -336,6 +371,51 @@ const styles = StyleSheet.create({
   filaLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 },
   botonLugar: { width: 45, height: 45, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
   itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
-  noAccessBanner: { margin: 15, padding: 12, backgroundColor: '#2a0000', borderRadius: 8, borderLeftWidth: 5, borderLeftColor: COLORS.lleno },
-  noAccessText: { color: '#FFAAAA', fontWeight: 'bold', textAlign: 'center' }
+  // NUEVOS ESTILOS PREMIUM
+  premiumBanner: {
+    margin: 15,
+    borderRadius: 15,
+    backgroundColor: '#1A1A1A', 
+    borderWidth: 1,
+    borderColor: '#333',
+    overflow: 'hidden',
+    padding: 15,
+  },
+  bannerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  premiumTitle: {
+    color: COLORS.accent, 
+    fontWeight: '900', 
+    fontSize: 14, 
+    letterSpacing: 1.5 
+  },
+  premiumSub: { 
+    color: COLORS.textSub, 
+    fontSize: 11, 
+    marginTop: 2 
+  },
+  premiumBtn: {
+    backgroundColor: COLORS.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingRight: 15,
+    borderRadius: 10,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  premiumBtnText: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: 12,
+    marginLeft: -4,
+  },
 });

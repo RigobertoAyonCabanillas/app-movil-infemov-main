@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const API_URL = 'http://100.116.49.102:5254/api';
+export const API_URL = 'http://192.168.0.135:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -774,6 +774,67 @@ export const validarQrUsuario = async (token) => {
     return data; // Contiene: mensaje, usuarioId, nombre, correo, gimnasioId
   } catch (error) {
     console.error("Error en validarQrUsuario:", error.message);
+    throw error;
+  }
+};
+
+// --- SERVICIOS DE PAGOS (STRIPE) ---
+
+/**
+ * Crea una sesión de checkout en el backend para iniciar el pago.
+ * @param {string} productoId - ID del producto (ej: '10clases_300', 'membresia_pro')
+ * @param {number} usuarioId - ID del usuario
+ * @param {number} superUsuarioId - ID del gimnasio
+ */
+// Agregamos el cuarto parámetro 'redirectUrl' aquí
+// Agregamos 'redirectUrl' como cuarto parámetro
+export const crearSesionCheckout = async (productoId, usuarioId, superUsuarioId, redirectUrl) => {
+    try {
+        const body = {
+            ProductoId: productoId,
+            UsuarioId: usuarioId,
+            SuperUsuarioId: superUsuarioId,
+            Tipo: productoId.includes('membresia') ? 'membresia' : 'creditos',
+            
+            // LA MAGIA: Mandamos la URL exacta de Expo, codificada
+            SuccessUrl: `${API_URL}/exito?session_id={CHECKOUT_SESSION_ID}&redirect_url=${encodeURIComponent(redirectUrl)}`,
+            CancelUrl: `${API_URL}/exito?redirect_url=${encodeURIComponent(redirectUrl)}`
+        };
+        const response = await fetch(`${API_URL}/api/crear-sesion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error("Error:", error);
+        throw error;
+    }
+};
+
+
+/**
+ * Verifica el estado del pago con el backend usando el sessionId de Stripe.
+ * @param {string} sessionId - El ID de sesión devuelto por la creación
+ */
+export const verificarPagoStripe = async (sessionId) => {
+  try {
+    // El endpoint es GET: verificar-pago/{sessionId}
+    const response = await fetchSeguro(`/verificar-pago/${sessionId}`, {
+      method: 'GET'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al verificar el pago');
+    }
+
+    // Retorna { pagado: true/false, estado, mensaje, productoId, etc. }
+    return data; 
+  } catch (error) {
+    console.error("Error en verificarPagoStripe:", error.message);
     throw error;
   }
 };
