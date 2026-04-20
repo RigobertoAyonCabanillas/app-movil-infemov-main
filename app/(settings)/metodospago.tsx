@@ -47,20 +47,16 @@ export default function MetodosPagoScreen() {
   const appState = useRef(AppState.currentState);
   const sessionEnCurso = useRef<string | null>(null);
 
-  // EFECTO PARA DETECTAR REGRESO A LA APP (MÉTODO 2)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      // Si la app pasa de fondo/inactiva a primer plano y hay una sesión pendiente
+      // Si el usuario vuelve a la app (por ejemplo, cerró el navegador manualmente)
       if (
         appState.current.match(/inactive|background/) && 
         nextAppState === 'active' && 
         sessionEnCurso.current
       ) {
-        console.log("🔄 Regreso detectado tras pago. Verificando...");
-        // Delay para permitir que el Webhook de Stripe llegue a tu C#
-        setTimeout(() => {
-          verificarConReintentos(sessionEnCurso.current!);
-        }, 2000);
+        // Verificamos por si acaso el pago se completó pero el redirect falló
+        verificarConReintentos(sessionEnCurso.current!);
       }
       appState.current = nextAppState;
     });
@@ -78,38 +74,53 @@ export default function MetodosPagoScreen() {
         sessionEnCurso.current = null;
         setLoadingId(null);
       } else if (intentos < 3) {
-        // Reintentamos cada 3 segundos si el backend aún no confirma
-        setTimeout(() => verificarConReintentos(sessionId, intentos + 1), 3000);
+        // Reintentamos brevemente si el webhook de Stripe aún está procesando
+        setTimeout(() => verificarConReintentos(sessionId, intentos + 1), 2500);
       } else {
-        Alert.alert("Procesando", "Tu pago se está confirmando. Los créditos aparecerán pronto.");
+        Alert.alert("Procesando", "Estamos confirmando tu pago. Tus créditos aparecerán en unos momentos.");
         sessionEnCurso.current = null;
         setLoadingId(null);
       }
     } catch (error) {
       console.error("Error verificando pago:", error);
       setLoadingId(null);
+      sessionEnCurso.current = null;
     }
   };
 
   const iniciarFlujoPago = async (productoId: string) => {
-  try {
-    const redirectUrl = Linking.createURL('pago-finalizado', { scheme: 'fixskale-app' });
+    setLoadingId(productoId);
+    try {
+      // Importante: El scheme debe ser 'fixskale-app' (con guion si así está en tu app.json)
+      // Esto genera fixskale-app://pagofinalizado
+      const redirectUrl = Linking.createURL('pagofinalizado', { scheme: 'fixskale-app' });
 
-    // Pasamos los 4 argumentos. El servicio se encarga de formatear la URL del backend
-    const data = await crearSesionCheckout(productoId, users.id, users.gymId, redirectUrl);
-    
-    if (data?.url) {
-      // Usamos openAuthSessionAsync para que detecte el regreso
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      const data = await crearSesionCheckout(productoId, users.id, users.gymId, redirectUrl);
+      
+      if (data?.url && data?.sessionId) {
+        sessionEnCurso.current = data.sessionId;
 
-      if (result.type === 'success') {
-        verificarConReintentos(data.sessionId);
+        // openAuthSessionAsync permite que la app reaccione cuando el navegador redirige al scheme
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+        if (result.type === 'success') {
+          // El navegador se cerró porque detectó el redirectUrl del backend
+          verificarConReintentos(data.sessionId);
+        } else {
+          // El usuario canceló o cerró el navegador manualmente
+          setLoadingId(null);
+          sessionEnCurso.current = null;
+        }
+      } else {
+        Alert.alert("Error", "No se pudo generar la sesión de pago.");
+        setLoadingId(null);
       }
+    } catch (e) {
+      console.error("Error en flujo de pago:", e);
+      Alert.alert("Error", "Ocurrió un problema al conectar con el servidor de pagos.");
+      setLoadingId(null);
     }
-  } catch (e) {
-    console.error(e);
-  }
-};
+  };
 
   const renderItem = (pkg: typeof PAQUETES[0]) => (
     <TouchableOpacity 

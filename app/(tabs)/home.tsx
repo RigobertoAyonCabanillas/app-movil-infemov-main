@@ -1,9 +1,16 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useContext, useCallback, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  StatusBar, 
+  ActivityIndicator, 
+  TouchableOpacity 
+} from 'react-native';
 import { UserContext } from '../../components/UserContext'; 
 import { useAuthService } from "@/servicesdb/authService";
-import { parse, isBefore } from 'date-fns';
 
 const BRAND_PINK = '#FF3CAC'; 
 const BRAND_GREEN = '#39FF14'; 
@@ -11,21 +18,17 @@ const CARD_BG = '#0A0A0A';
 
 export default function Home() {
   const { users } = useContext(UserContext);
+  const router = useRouter();
   const { 
     sincronizarPerfil, 
     actualizarBaseDatosLocalMembresia, 
-    actualizarBaseDatosLocalCreditos,
-    obtenerMisClasesProceso 
+    actualizarBaseDatosLocalCreditos 
   } = useAuthService();
 
-  const [misReservas, setMisReservas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // REF para evitar el bucle infinito
   const isSyncing = useRef(false);
 
   const cargarInformacionHome = async () => {
-    // Evitamos ejecuciones duplicadas si ya hay una en curso
     if (isSyncing.current) return;
 
     const currentId = users?.id || users?.Id;
@@ -38,25 +41,11 @@ export default function Home() {
       isSyncing.current = true;
       setLoading(true);
 
-      console.log("🔄 Sincronizando Home...");
-      
-      // Ejecutamos las promesas
+      // Solo sincronizamos datos esenciales de perfil y créditos
       await sincronizarPerfil(currentId, currentCorreo);
       await actualizarBaseDatosLocalMembresia(currentId, currentGymId);
       await actualizarBaseDatosLocalCreditos(currentId, currentGymId);
-
-      const clases = await obtenerMisClasesProceso(currentId, currentGymId);
       
-      const ahora = new Date();
-      const clasesFuturas = (clases || []).filter((ins: any) => {
-        try {
-          const fechaLimpia = (ins.dia || ins.fecha || "").split('T')[0];
-          const fechaHoraClase = parse(`${fechaLimpia} ${ins.horaInicio}`, 'yyyy-MM-dd HH:mm:ss', new Date());
-          return !isBefore(fechaHoraClase, ahora);
-        } catch (e) { return false; }
-      });
-
-      setMisReservas(clasesFuturas);
     } catch (e) {
       console.error("❌ Error en sincronización:", e);
     } finally {
@@ -68,12 +57,10 @@ export default function Home() {
   useFocusEffect(
     useCallback(() => {
       cargarInformacionHome();
-      
-      // Opcional: limpiar al salir de la pantalla
       return () => {
         isSyncing.current = false;
       };
-    }, []) // Dependencias vacías: solo se ejecuta al entrar a la pantalla
+    }, [])
   );
 
   return (
@@ -90,27 +77,22 @@ export default function Home() {
         {loading && <ActivityIndicator size="small" color={BRAND_GREEN} />}
       </View>
 
-      {misReservas.length > 0 ? (
-        misReservas.map((item, index) => (
-          <View key={index} style={styles.reservaCard}>
-            <View style={styles.reservaInfo}>
-              <Text style={styles.claseNombre}>{item.nombreClase}</Text>
-              <Text style={styles.claseDetalle}>{item.dia} | {item.horaInicio}</Text>
-            </View>
-            <View style={styles.tagLugar}>
-              <Text style={styles.tagText}>
-                {item.lugar === 0 || item.lugar === "0" ? "ESPERA" : `LUGAR ${item.lugar}`}
-              </Text>
-            </View>
-          </View>
-        ))
-      ) : (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No hay clases próximas hoy.</Text>
+      {/* Botón único que redirige a Reservaciones */}
+      <TouchableOpacity 
+        style={styles.agendaButton} 
+        onPress={() => router.push("/(tabs)/reservaciones")}
+        activeOpacity={0.7}
+      >
+        <View style={styles.agendaContent}>
+          <Text style={styles.agendaTitle}>Ver mis clases</Text>
+          <Text style={styles.agendaSub}>Consulta tus horarios y reserva aquí</Text>
         </View>
-      )}
+        <View style={styles.arrowContainer}>
+          <Text style={styles.arrow}>→</Text>
+        </View>
+      </TouchableOpacity>
 
-      {/* BANNER DE RELLENO ESTILO GYM */}
+      {/* BANNER PROMOCIONAL */}
       <View style={styles.promoBanner}>
         <View style={styles.promoBadge}>
           <Text style={styles.promoBadgeText}>NUEVO</Text>
@@ -146,14 +128,37 @@ const styles = StyleSheet.create({
   userName: { color: BRAND_PINK, fontSize: 32, fontWeight: 'bold' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   sectionTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
-  reservaCard: { backgroundColor: CARD_BG, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#1A1A1A', marginBottom: 10 },
-  reservaInfo: { flex: 1 },
-  claseNombre: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  claseDetalle: { color: '#888888', fontSize: 13, marginTop: 4 },
-  tagLugar: { backgroundColor: '#000', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: BRAND_GREEN },
-  tagText: { color: BRAND_GREEN, fontSize: 10, fontWeight: 'bold' },
-  emptyCard: { padding: 20, borderRadius: 14, borderStyle: 'dashed', borderWidth: 1, borderColor: '#333', alignItems: 'center' },
-  emptyText: { color: '#666' },
+  
+  // Estilo del nuevo botón de Agenda
+  agendaButton: { 
+    backgroundColor: CARD_BG, 
+    borderRadius: 16, 
+    padding: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    borderWidth: 1, 
+    borderColor: '#1A1A1A',
+    shadowColor: BRAND_GREEN,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2
+  },
+  agendaContent: { flex: 1 },
+  agendaTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  agendaSub: { color: '#666', fontSize: 13, marginTop: 4 },
+  arrowContainer: { 
+    backgroundColor: '#111', 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#222'
+  },
+  arrow: { color: BRAND_GREEN, fontSize: 20, fontWeight: 'bold' },
+
   promoBanner: { backgroundColor: '#111', borderRadius: 16, padding: 20, marginTop: 20, borderWidth: 1, borderColor: '#222' },
   promoBadge: { backgroundColor: BRAND_PINK, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginBottom: 10 },
   promoBadgeText: { color: '#000', fontSize: 10, fontWeight: 'bold' },

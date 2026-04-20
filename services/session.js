@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from './api'; // <--- Importamos la constante
-import * as FileSystem from 'expo-file-system';
+import { API_URL } from './api'; 
+// Cambiamos la importación a la ruta legacy para mantener compatibilidad
+import * as FileSystem from 'expo-file-system/legacy'; 
 
 export const limpiarDatosLocales = async () => {
   try {
@@ -8,26 +9,27 @@ export const limpiarDatosLocales = async () => {
     const token = await AsyncStorage.getItem('userToken') || await AsyncStorage.getItem('token');
     
     if (token) {
-      // Usamos el endpoint de logout que mencionaste antes
       fetch(`${API_URL}/logout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Token: token })
-      }).catch(() => console.log("Servidor C# no alcanzable, continuando limpieza local..."));
+      }).catch(() => console.log("Servidor C# no alcanzable..."));
     }
 
     // 2. BORRADO FÍSICO DE LA BASE DE DATOS
-    // Usamos el nombre 'bdMovilFinal' que tienes configurado en tu inicialización de Drizzle
+    // Nota: SQLite suele añadir la extensión .db internamente
     const dbPath = `${FileSystem.documentDirectory}SQLite/bdMovilFinal`; 
-    const dbInfo = await FileSystem.getInfoAsync(dbPath);
-
-    if (dbInfo.exists) {
+    
+    // En lugar de verificar con getInfoAsync (que da el error), 
+    // intentamos borrar directamente con idempotent: true
+    try {
       await FileSystem.deleteAsync(dbPath, { idempotent: true });
-      console.log("Archivo de base de datos 'bdMovilFinal' eliminado.");
+      console.log("Archivo de base de datos eliminado.");
+    } catch (e) {
+      console.log("No se pudo eliminar el archivo o no existía.");
     }
 
     // 3. LIMPIEZA DE ASYNC STORAGE
-    // Esto borra tokens, IDs de usuario y cualquier otra persistencia simple
     await AsyncStorage.clear();
     
     console.log("Sesión y datos locales limpiados con éxito.");
