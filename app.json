@@ -26,9 +26,9 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#7A8C99",
-        "foregroundImage": "./assets/images/logoFixskaleFMovil.png",
-        "backgroundImage": "./assets/images/logoFixskaleFMovil.png",
-        "monochromeImage": ""
+        "foregroundImage": "./assets/images/FSLogo.png",
+        "backgroundImage": "./assets/images/FSLogo.png",
+        "monochromeImage": "./assets/images/FSLogo.png"
       },
       "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,

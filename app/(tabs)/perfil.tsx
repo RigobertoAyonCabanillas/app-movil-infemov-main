@@ -7,11 +7,11 @@ import { useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 
-import { generarQrUsuario, validarQrUsuario } from '@/services/api'; 
+import { generarQrUsuario, validarQrUsuario, verificarEstadoQr } from '@/services/api'; 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Paleta de colores oficial
+// Paleta de colores oficial de Fixskale
 const BRAND_PINK = '#FF3CAC';
 const BRAND_GREEN = '#39FF14';
 
@@ -39,26 +39,39 @@ export default function Perfil() {
     const esCoach = users?.rol === 'Coach';
 
     useEffect(() => {
-        let intervalo: any;
-        if (qrVisible && tokenQr) {
-            intervalo = setInterval(async () => {
-                try {
-                    const ahora = Date.now();
-                    if (ahora - tiempoCreacionRef.current < 5000) return; 
+    let intervalo: any;
 
-                    const data = await validarQrUsuario(tokenQr);
-                    if (data) {
-                        setQrVisible(false); 
-                        setTokenQr(null);
-                        Alert.alert("Acceso Confirmado", data.mensaje || "¡Bienvenido!");
-                    }
-                } catch (error) {
-                    console.log("Esperando escaneo...");
+    if (qrVisible && tokenQr) {
+        intervalo = setInterval(async () => {
+            try {
+                // Consultamos el estatus del token generado
+                const data = await verificarEstadoQr(tokenQr);
+                console.log("validar qr", data)
+                // Si el backend confirma que ya fue procesado (escaneado: true)
+                if (data && data.escaneado === true) {
+                    // 1. Cerramos el modal inmediatamente
+                    setQrVisible(false); 
+                    
+                    // 2. Limpiamos el token para evitar re-consultas
+                    setTokenQr(null);
+                    
+                    // 3. Detenemos el intervalo para liberar memoria
+                    clearInterval(intervalo);
+                    
+                    // 4. Mostramos la confirmación al usuario
+                    Alert.alert("Acceso Confirmado", data.mensaje || "¡Bienvenido a Fixskale!");
                 }
-            }, 3000); 
-        }
-        return () => { if (intervalo) clearInterval(intervalo); };
-    }, [qrVisible, tokenQr]);
+            } catch (error) {
+                // Si hay error o el token sigue activo, el ciclo continúa cada 3 segundos
+                console.log("Esperando validación del Coach...");
+            }
+        }, 3000); 
+    }
+
+    return () => {
+        if (intervalo) clearInterval(intervalo);
+    };
+}, [qrVisible, tokenQr]);
 
     const manejarGenerarQr = async () => {
         try {
@@ -71,7 +84,7 @@ export default function Perfil() {
                 setQrVisible(true);
             }
         } catch (error: any) {
-            Alert.alert("Error", error.message || "No se pudo generar el código QR");
+            Alert.alert("Error", error.message || "No se pudo generar el código QR de entrada");
         } finally {
             setLoading(false);
         }
@@ -82,6 +95,7 @@ export default function Perfil() {
             const currentId = users?.id || users?.Id;
             const currentCorreo = users?.correo || users?.Correo;
             if (currentId && currentCorreo) {
+                // Sincronización silenciosa del perfil (Fixskale)
                 const timeout = setTimeout(() => {
                     sincronizarPerfil(currentId, currentCorreo).catch(console.error);
                 }, 500); 
@@ -95,7 +109,7 @@ export default function Perfil() {
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                 <View style={styles.headerSection}>
                     <Text style={styles.neonMainTitle}>Perfil Usuario</Text>
-                    <Text style={styles.neonSubTitle}>Gestiona tu información personal</Text>
+                    <Text style={styles.neonSubTitle}>Fixskale: Tu información personal</Text>
                 </View>
 
                 <View style={styles.contentWrapper}>
@@ -134,6 +148,7 @@ export default function Perfil() {
                 onRequestClose={() => { setQrVisible(false); setTokenQr(null); }}
             >
                 <View style={styles.modalOverlay}>
+                    {/* CORRECCIÓN: Borde cambiado de Rosa a Verde Neón */}
                     <View style={styles.neonModalContent}>
                         <TouchableOpacity 
                             style={styles.closeButton} 
@@ -142,16 +157,18 @@ export default function Perfil() {
                             <MaterialCommunityIcons name="close" size={28} color={BRAND_PINK} />
                         </TouchableOpacity>
 
+                        {/* CORRECCIÓN: Título cambiado de Rosa a Verde Neón */}
                         <Text style={styles.neonModalTitle}>Mi Pase de Entrada</Text>
-                        <Text style={styles.neonModalSub}>Presenta este código al Coach</Text>
+                        <Text style={styles.neonModalSub}>Presenta este código al Coach en Fixskale</Text>
                         
+                        {/* CORRECCIÓN: Fondo blanco y QR negro para escaneo estándar */}
                         <View style={styles.neonQrWrapper}>
                             {tokenQr && (
                                 <QRCode
                                     value={tokenQr}
                                     size={200}
-                                    color="white" 
-                                    backgroundColor="transparent"
+                                    color="black" // Módulos Negros (Estándar)
+                                    backgroundColor="white" // Fondo Blanco (Estándar)
                                 />
                             )}
                         </View>
@@ -164,7 +181,7 @@ export default function Perfil() {
                         <View style={{ marginTop: 25, flexDirection: 'row', alignItems: 'center' }}>
                             <ActivityIndicator size="small" color={BRAND_GREEN} />
                             <Text style={{ marginLeft: 10, color: BRAND_GREEN, fontSize: 12, opacity: 0.8 }}>
-                                Esperando escaneo...
+                                Esperando escaneo en el gimnasio...
                             </Text>
                         </View>
                     </View>
@@ -243,7 +260,7 @@ const styles = StyleSheet.create({
         padding: 30, 
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: BRAND_PINK,
+        borderColor: BRAND_GREEN, // CORRECCIÓN: Rosa -> Verde Neón
         shadowColor: BRAND_PINK,
         shadowRadius: 20, 
         shadowOpacity: 0.3
@@ -252,15 +269,16 @@ const styles = StyleSheet.create({
     neonModalTitle: { 
         fontSize: 22, 
         fontWeight: 'bold', 
-        color: BRAND_PINK, 
+        color: BRAND_GREEN, // CORRECCIÓN: Rosa -> Verde Neón
         marginTop: 10,
-        textShadowColor: 'rgba(255, 60, 172, 0.5)',
+        textShadowColor: 'rgba(57, 255, 20, 0.5)', // CORRECCIÓN: Sombra Rosa -> Sombra Verde
         textShadowRadius: 4
     },
     neonModalSub: { fontSize: 13, color: '#666', marginBottom: 25 },
+    // CORRECCIÓN: Fondo blanco y borde verde suave para el contenedor QR
     neonQrWrapper: {
         padding: 15, 
-        backgroundColor: 'rgba(255,255,255,0.03)', 
+        backgroundColor: 'white', // CORRECCIÓN: Transparente -> Blanco (Estándar QR)
         borderRadius: 15,
         borderWidth: 1, 
         borderColor: 'rgba(57, 255, 20, 0.2)',

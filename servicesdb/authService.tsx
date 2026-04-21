@@ -576,7 +576,34 @@ const cancelarInscripcionProceso = async (idClase: string | number) => {
   }
 };
 
+const verificarSesionLocal = async () => {
+  try {
+    const usuariosLocales = await drizzleDb.select().from(schema.usersdb).limit(1);
+    if (usuariosLocales.length > 0) {
+      return usuariosLocales[0];
+    }
+    return null;
+  } catch (error) {
+    console.error("Error al leer SQLite:", error);
+    return null;
+  }
+};
+
+const cerrarSesionProceso = async () => {
+  try {
+    // 1. Limpiamos la tabla de usuarios en SQLite
+    await drizzleDb.delete(schema.usersdb);
+    
+    // 2. Limpiamos el estado global del contexto
+    setUsers(null);
+    
+    console.log("Log: Sesión limpiada localmente");
+  } catch (error) {
+    console.error("Error al cerrar sesión:", error);
+  }
+};
 
   return { registrarUsuarioProceso, loginUsuarioProceso, guardarUsuarioEnSQLite, sincronizarPerfil,sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, obtenerUsuarioLocal, obtenerMembresiasLocal, obtenerCreditosLocal, 
-    actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService,sincronizarClasesGimnasio, inscribirAClaseProceso, cancelarInscripcionProceso, obtenerMisClasesProceso};
+  actualizarBaseDatosLocalMembresia, actualizarBaseDatosLocalCreditos, actualizarPassword, enviarSugerenciaService,sincronizarClasesGimnasio, inscribirAClaseProceso, cancelarInscripcionProceso, obtenerMisClasesProceso, 
+  verificarSesionLocal, cerrarSesionProceso};
 }

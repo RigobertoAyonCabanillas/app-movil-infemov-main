@@ -108,20 +108,7 @@ export default function ReservacionesScreen() {
 
       setClasesDisponibles(formateadas);
       const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
-
-      const inscripcionesFiltradas = (inscripciones || []).filter((ins: any) => {
-        const fechaRaw = ins.dia || ins.fecha || ins.fechaClase;
-        if (!fechaRaw) return false;
-        try {
-          const fechaString = fechaRaw.includes('T') ? fechaRaw.split('T')[0] : fechaRaw;
-          const fechaClase = parse(fechaString, 'yyyy-MM-dd', new Date());
-          return !isNaN(fechaClase.getTime()) && !isBefore(fechaClase, hoy);
-        } catch (e) { return false; }
-      });
-
-      setMisClasesInscritas(inscripcionesFiltradas);
+      setMisClasesInscritas(inscripciones || []);
     } catch (error) {
       console.error("Error:", error);
     } finally {
@@ -130,36 +117,6 @@ export default function ReservacionesScreen() {
   };
   
   useFocusEffect(useCallback(() => { cargarDatos(); }, [gimnasioId]));
-
-  const verificarSiYaPaso = (fecha: string, hora: string) => {
-    const ahora = new Date();
-    const fechaLimpia = fecha.split('T')[0]; 
-    const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
-    return isBefore(fechaClase, ahora);
-  };
-
-  const obtenerInfoEstado = (clase: Clase) => {
-    const yaPaso = verificarSiYaPaso(clase.dia, clase.horaInicio);
-    if (yaPaso) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
-
-    const inscripcionPropia = misClasesInscritas.find(
-      (ins) => Number(ins.claseId || ins.id) === Number(clase.id)
-    );
-
-    if (inscripcionPropia) {
-      const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
-      return { 
-        color: esEspera ? COLORS.espera : COLORS.inscrito, 
-        label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
-        tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
-      };
-    }
-
-    const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
-    if (estaLleno) return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
-    
-    return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
-  };
 
   const ejecutarCancelacion = async (idClase: string | number) => {
     setLoading(true);
@@ -189,29 +146,93 @@ export default function ReservacionesScreen() {
     }
   };
 
+  const obtenerInfoEstado = (clase: Clase) => {
+    const yaPaso = (fecha: string, hora: string) => {
+        const ahora = new Date();
+        const fechaLimpia = fecha.split('T')[0]; 
+        const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
+        return isBefore(fechaClase, ahora);
+    };
+
+    if (yaPaso(clase.dia, clase.horaInicio)) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
+
+    const inscripcionPropia = misClasesInscritas.find(
+      (ins) => Number(ins.claseId || ins.id) === Number(clase.id)
+    );
+
+    if (inscripcionPropia) {
+      const esEspera = (inscripcionPropia.lugar === 0 || inscripcionPropia.lugar === "0");
+      return { 
+        color: esEspera ? COLORS.espera : COLORS.inscrito, 
+        label: esEspera ? 'EN ESPERA' : 'INSCRITO', 
+        tipo: esEspera ? 'ESPERA' : 'INSCRITO' 
+      };
+    }
+
+    const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
+    if (estaLleno) return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
+    
+    return { color: COLORS.accent, label: 'LIBRE', tipo: 'LIBRE' };
+  };
+
   return (
     <PaperProvider theme={{...DefaultTheme, colors: {...DefaultTheme.colors, background: COLORS.bg}}}>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
         
         <Portal>
-          <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
+          <Modal 
+            visible={modalEquipoVisible} 
+            onDismiss={() => setModalEquipoVisible(false)} 
+            contentContainerStyle={styles.modalContainer}
+          >
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
-            <View style={styles.filaLugares}>
-                {Array.from({ length: claseSeleccionada?.vacantes || 0 }, (_, i) => i + 1).map(num => {
-                    const estaOcupado = (claseSeleccionada?.lugaresOcupados || []).includes(num);
-                    return (
-                        <TouchableOpacity 
-                            key={num} disabled={estaOcupado}
+            
+            <ScrollView contentContainerStyle={styles.scrollLugares}>
+              {(() => {
+                const vacantes = claseSeleccionada?.vacantes || 0;
+                const elementos = Array.from({ length: vacantes }, (_, i) => i + 1);
+                const filas = [];
+                let index = 0;
+                let esFilaDeCuatro = true;
+
+                while (index < elementos.length) {
+                  const numEnFila = esFilaDeCuatro ? 4 : 3;
+                  const filaActual = elementos.slice(index, index + numEnFila);
+                  
+                  filas.push(
+                    <View key={`fila-${index}`} style={styles.filaPersonalizada}>
+                      {filaActual.map((num) => {
+                        const estaOcupado = (claseSeleccionada?.lugaresOcupados || []).includes(num);
+                        return (
+                          <TouchableOpacity 
+                            key={num} 
+                            disabled={estaOcupado}
                             onPress={() => manejarInscripcionFinal(num)}
-                            style={[styles.botonLugar, { backgroundColor: estaOcupado ? '#333' : COLORS.accent }]}
-                        >
-                            <Text style={{ fontWeight: 'bold', color: estaOcupado ? '#666' : '#000' }}>{num}</Text>
-                        </TouchableOpacity>
-                    );
-                })}
-            </View>
-            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+                            style={[
+                              styles.botonLugar, 
+                              { backgroundColor: estaOcupado ? '#333' : COLORS.accent }
+                            ]}
+                          >
+                            <Text style={{ fontWeight: 'bold', color: estaOcupado ? '#666' : '#000' }}>
+                              {num}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                  
+                  index += numEnFila;
+                  esFilaDeCuatro = !esFilaDeCuatro; // Cambia el patrón: 4 -> 3 -> 4...
+                }
+                return filas;
+              })()}
+            </ScrollView>
+
+            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent} style={{marginTop: 15}}>
+              Cerrar
+            </Button>
           </Modal>
 
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
@@ -250,25 +271,6 @@ export default function ReservacionesScreen() {
             <IconButton icon="calendar-check" iconColor={COLORS.accent} size={28} onPress={() => setModalGestionVisible(true)} />
           </View>
         </Surface>
-
-        {/* BANNER PREMIUM DE COMPRA */}
-        {!tieneAcceso && !loading && (
-          <Surface style={styles.premiumBanner} elevation={5}>
-            <View style={styles.bannerInner}>
-              <View style={styles.bannerTextContainer}>
-                <Text style={styles.premiumTitle}>SIN ACCESO ACTIVO</Text>
-                <Text style={styles.premiumSub}>Consigue un plan para reservar tu clase</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.premiumBtn}
-                onPress={() => navigation.navigate('(settings)', { screen: 'metodospago' })}
-              >
-                <IconButton icon="cart" iconColor="#000" size={18} style={{margin: 0}} />
-                <Text style={styles.premiumBtnText}>TIENDA</Text>
-              </TouchableOpacity>
-            </View>
-          </Surface>
-        )}
 
         {loading ? (
           <ActivityIndicator style={{marginTop: 50}} color={COLORS.accent} size="large" />
@@ -313,20 +315,13 @@ export default function ReservacionesScreen() {
                                         ejecutarCancelacion(clase.id);
                                       } else {
                                         if (!tieneAcceso) {
-                                            Alert.alert(
-                                              "Acceso Denegado", 
-                                              "No cuentas con membresía o créditos para reservar. ¿Deseas ir a la tienda?",
-                                              [
-                                                { text: "Cancelar", style: "cancel" },
-                                                { text: "Ir a Tienda", onPress: () => navigation.navigate('(settings)', { screen: 'metodospago' }) }
-                                              ]
-                                            );
+                                            Alert.alert("Acceso Denegado", "No cuentas con membresía o créditos.");
                                             return;
                                         }
                                         setClaseSeleccionada(clase);
                                         estado.tipo === 'LIBRE' ? setModalEquipoVisible(true) : manejarInscripcionFinal(0);
                                       }
-                                    }}
+                                  }}
                                   labelStyle={{ fontSize: 11, color: '#000', fontWeight: 'bold' }}
                                   style={styles.btnAccion}
                                 >
@@ -365,57 +360,27 @@ const styles = StyleSheet.create({
   btnAccion: { borderRadius: 20, height: 35, justifyContent: 'center' },
   boxPasado: { borderWidth: 1, borderColor: COLORS.pasadoBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   textPasado: { color: COLORS.pasadoText, fontSize: 11, fontWeight: 'bold' },
-  modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 10 },
-  modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
+  
+  // Estilos del Modal y Cuadrícula 4-3-4
+  modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 20, maxHeight: '85%' },
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, fontSize: 16 },
-  filaLugares: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 },
-  botonLugar: { width: 45, height: 45, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
+  scrollLugares: { alignItems: 'center', paddingBottom: 10 },
+  filaPersonalizada: { 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    width: '100%', 
+    gap: 15,           // Espacio entre botones
+    marginBottom: 15   // Espacio entre filas
+  },
+  botonLugar: { 
+    width: 50, 
+    height: 50, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderRadius: 12,
+    elevation: 4
+  },
+
+  modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
   itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
-  // NUEVOS ESTILOS PREMIUM
-  premiumBanner: {
-    margin: 15,
-    borderRadius: 15,
-    backgroundColor: '#1A1A1A', 
-    borderWidth: 1,
-    borderColor: '#333',
-    overflow: 'hidden',
-    padding: 15,
-  },
-  bannerInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bannerTextContainer: {
-    flex: 1,
-  },
-  premiumTitle: {
-    color: COLORS.accent, 
-    fontWeight: '900', 
-    fontSize: 14, 
-    letterSpacing: 1.5 
-  },
-  premiumSub: { 
-    color: COLORS.textSub, 
-    fontSize: 11, 
-    marginTop: 2 
-  },
-  premiumBtn: {
-    backgroundColor: COLORS.accent,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingRight: 15,
-    borderRadius: 10,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  premiumBtnText: {
-    color: '#000',
-    fontWeight: '900',
-    fontSize: 12,
-    marginLeft: -4,
-  },
 });

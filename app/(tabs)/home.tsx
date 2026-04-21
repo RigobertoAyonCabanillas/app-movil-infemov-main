@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useContext, useCallback, useState, useRef } from 'react';
+import { useContext, useCallback, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,7 +7,8 @@ import {
   ScrollView, 
   StatusBar, 
   ActivityIndicator, 
-  TouchableOpacity 
+  TouchableOpacity,
+  Alert 
 } from 'react-native';
 import { UserContext } from '../../components/UserContext'; 
 import { useAuthService } from "@/servicesdb/authService";
@@ -22,45 +23,44 @@ export default function Home() {
   const { 
     sincronizarPerfil, 
     actualizarBaseDatosLocalMembresia, 
-    actualizarBaseDatosLocalCreditos 
+    actualizarBaseDatosLocalCreditos, 
+    cerrarSesionProceso 
   } = useAuthService();
 
   const [loading, setLoading] = useState(false);
-  const isSyncing = useRef(false);
-
-  const cargarInformacionHome = async () => {
-    if (isSyncing.current) return;
-
-    const currentId = users?.id || users?.Id;
-    const currentCorreo = users?.correo || users?.Correo;
-    const currentGymId = users?.gymId || users?.GimnasioActual;
-
-    if (!currentId || !currentCorreo) return;
-
-    try {
-      isSyncing.current = true;
-      setLoading(true);
-
-      // Solo sincronizamos datos esenciales de perfil y créditos
-      await sincronizarPerfil(currentId, currentCorreo);
-      await actualizarBaseDatosLocalMembresia(currentId, currentGymId);
-      await actualizarBaseDatosLocalCreditos(currentId, currentGymId);
-      
-    } catch (e) {
-      console.error("❌ Error en sincronización:", e);
-    } finally {
-      setLoading(false);
-      isSyncing.current = false;
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
-      cargarInformacionHome();
-      return () => {
-        isSyncing.current = false;
-      };
-    }, [])
+      const currentId = users?.id || users?.Id;
+      const currentCorreo = users?.correo || users?.Correo;
+      const currentGymId = users?.gymId || users?.GimnasioActual;
+
+      if (currentId && currentCorreo) {
+        // Usamos el patrón de timeout que tienes en Perfil para evitar colisiones
+        const timeout = setTimeout(async () => {
+          try {
+            setLoading(true);
+            // Sincronización silenciosa
+            await sincronizarPerfil(currentId, currentCorreo);
+            
+            if (currentGymId) {
+              await actualizarBaseDatosLocalMembresia(currentId, currentGymId);
+              await actualizarBaseDatosLocalCreditos(currentId, currentGymId);
+            }
+          } catch (error: any) {
+            console.error("Error sincronización Home:", error);
+            if (error.message?.includes("401")) {
+              await cerrarSesionProceso();
+              router.replace("/");
+            }
+          } finally {
+            setLoading(false);
+          }
+        }, 500);
+
+        return () => clearTimeout(timeout);
+      }
+    }, [users?.id]) // Dependencia única por ID como en tu ejemplo de Perfil
   );
 
   return (
@@ -69,7 +69,7 @@ export default function Home() {
 
       <View style={styles.header}>
         <Text style={styles.welcomeText}>Hola,</Text>
-        <Text style={styles.userName}>{users?.nombre || users?.Nombre || "Atleta"}</Text>
+        <Text style={styles.userName}>{users?.nombre || users?.nombres || "Atleta"}</Text>
       </View>
 
       <View style={styles.sectionHeader}>
@@ -77,7 +77,6 @@ export default function Home() {
         {loading && <ActivityIndicator size="small" color={BRAND_GREEN} />}
       </View>
 
-      {/* Botón único que redirige a Reservaciones */}
       <TouchableOpacity 
         style={styles.agendaButton} 
         onPress={() => router.push("/(tabs)/reservaciones")}
@@ -92,7 +91,6 @@ export default function Home() {
         </View>
       </TouchableOpacity>
 
-      {/* BANNER PROMOCIONAL */}
       <View style={styles.promoBanner}>
         <View style={styles.promoBadge}>
           <Text style={styles.promoBadgeText}>NUEVO</Text>
@@ -128,37 +126,18 @@ const styles = StyleSheet.create({
   userName: { color: BRAND_PINK, fontSize: 32, fontWeight: 'bold' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   sectionTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
-  
-  // Estilo del nuevo botón de Agenda
   agendaButton: { 
-    backgroundColor: CARD_BG, 
-    borderRadius: 16, 
-    padding: 20, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderColor: '#1A1A1A',
-    shadowColor: BRAND_GREEN,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 2
+    backgroundColor: CARD_BG, borderRadius: 16, padding: 20, 
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#1A1A1A'
   },
   agendaContent: { flex: 1 },
   agendaTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   agendaSub: { color: '#666', fontSize: 13, marginTop: 4 },
   arrowContainer: { 
-    backgroundColor: '#111', 
-    width: 40, 
-    height: 40, 
-    borderRadius: 20, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#222'
+    backgroundColor: '#111', width: 40, height: 40, borderRadius: 20, 
+    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#222'
   },
   arrow: { color: BRAND_GREEN, fontSize: 20, fontWeight: 'bold' },
-
   promoBanner: { backgroundColor: '#111', borderRadius: 16, padding: 20, marginTop: 20, borderWidth: 1, borderColor: '#222' },
   promoBadge: { backgroundColor: BRAND_PINK, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginBottom: 10 },
   promoBadgeText: { color: '#000', fontSize: 10, fontWeight: 'bold' },

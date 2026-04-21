@@ -1,13 +1,15 @@
 import React, { useContext } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Text, List, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { UserContext } from "@/components/UserContext";
+import { useAuthService } from "@/servicesdb/authService"; // Importamos tu hook
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const COLORS = {
   bg: '#000000',
   cardBg: '#121212',
-  accent: '#39FF14', // Tu verde neón
+  accent: '#39FF14', 
   textMain: '#FFFFFF',
   textSub: '#A0A0A0',
   divider: '#2C2C2C',
@@ -16,7 +18,7 @@ const COLORS = {
 };
 
 const SettingItem = ({ title, icon, onPress, textColor, disabled }: any) => (
-  <TouchableOpacity onPress={onPress} disabled={disabled}>
+  <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.7}>
     <List.Item
       title={title}
       titleStyle={[styles.itemTitle, { color: disabled ? COLORS.disabled : (textColor || COLORS.textMain) }]}
@@ -28,6 +30,7 @@ const SettingItem = ({ title, icon, onPress, textColor, disabled }: any) => (
         />
       )}
       right={props => (
+        // Quitamos el size={20} para evitar el error de tipos de TS
         !disabled && <List.Icon {...props} icon="chevron-right" color={COLORS.disabled} />
       )}
       style={styles.listItem}
@@ -36,28 +39,32 @@ const SettingItem = ({ title, icon, onPress, textColor, disabled }: any) => (
 );
 
 export default function AjustesScreen() {
-  const context = useContext(UserContext);
-  const setUsers = context?.setUsers;
+  const { setUsers } = useContext(UserContext);
+  const { cerrarSesionProceso } = useAuthService(); // Extraemos la función del hook
   const router = useRouter();
 
   const handleLogout = async () => {
     try {
-      // CARGA DINÁMICA: Evita que el archivo se rompa al cargar en el iPhone
-      const { cerrarSesionUniversal } = await import('../../services/authgoogle');
+      // 1. Ejecutamos la limpieza profunda (SQLite, Storage, Contexto)
+      await cerrarSesionProceso();
       
-      await cerrarSesionUniversal(); 
-      
-      if (setUsers) setUsers(null);
+      // Nota: cerrarSesionProceso ya debería tener el router.replace("/") 
+      // pero lo reforzamos aquí por si acaso.
       router.replace("/");
+      
     } catch (error) {
-      console.log("Error en logout:", error);
+      console.log("Error al procesar el cierre de sesión:", error);
+      // Fallback de seguridad: limpiar contexto y sacar al usuario
       if (setUsers) setUsers(null);
       router.replace("/");
     }
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} bounces={false}>
+      <View style={styles.header}>
+      </View>
+
       <View style={styles.section}>
         <SettingItem 
           title="Cuenta" 
@@ -94,7 +101,6 @@ export default function AjustesScreen() {
         />
         <Divider style={styles.divider} />
 
-        {/* Opción deshabilitada con diseño neón apagado */}
         <SettingItem 
           title="Cambiar el país" 
           icon="earth" 
@@ -107,11 +113,28 @@ export default function AjustesScreen() {
           title="Cerrar sesión" 
           icon="logout" 
           textColor={COLORS.logout}
-          onPress={handleLogout} 
+          onPress={() => {
+            Alert.alert(
+              "Cerrar Sesión",
+              "¿Estás seguro de que quieres salir? Se borrarán los datos de acceso local.",
+              [
+                { text: "Cancelar", style: "cancel" },
+                { 
+                  text: "Salir", 
+                  onPress: handleLogout, 
+                  style: "destructive" 
+                }
+              ]
+            );
+          }} 
         />
       </View>
 
       <View style={styles.footer}>
+        <View style={styles.brandContainer}>
+            <Text style={styles.brandText}>FIXSKALE</Text>
+            <View style={styles.dot} />
+        </View>
         <Text style={styles.versionText}>App version 1.0.0</Text>
       </View>
     </ScrollView>
@@ -119,17 +142,65 @@ export default function AjustesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.bg 
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 20,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.textMain,
+  },
   section: {
-    marginTop: 20,
     backgroundColor: COLORS.cardBg,
-    borderRadius: 10,
+    borderRadius: 15,
     marginHorizontal: 15,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.divider,
   },
-  listItem: { paddingVertical: 10 },
-  itemTitle: { fontSize: 16, fontWeight: '500' },
-  divider: { marginLeft: 60, backgroundColor: COLORS.divider },
-  footer: { marginTop: 40, alignItems: 'center', paddingBottom: 30 },
-  versionText: { color: COLORS.disabled, fontSize: 12 },
+  listItem: { 
+    paddingVertical: 8 
+  },
+  itemTitle: { 
+    fontSize: 16, 
+    fontWeight: '500' 
+  },
+  divider: { 
+    marginLeft: 60, 
+    backgroundColor: COLORS.divider,
+    height: 1 
+  },
+  footer: { 
+    marginTop: 50, 
+    alignItems: 'center', 
+    paddingBottom: 40 
+  },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  brandText: {
+    color: COLORS.accent,
+    fontWeight: '900',
+    letterSpacing: 2,
+    fontSize: 14,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+    marginLeft: 4,
+  },
+  versionText: { 
+    color: COLORS.disabled, 
+    fontSize: 12 
+  },
 });

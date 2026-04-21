@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CryptoJS from 'crypto-js';
 
-export const API_URL = 'http://100.116.49.102:5254/api';
+export const API_URL = 'http://192.168.0.106:5254/api';
 const API_URL2 = 'http://192.168.0.137:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -852,5 +852,24 @@ export const verificarPagoStripe = async (sessionId) => {
   } catch (error) {
     console.error("Error en verificarPagoStripe:", error.message);
     throw error;
+  }
+};
+
+// Estado del QR
+export const verificarEstadoQr = async (token) => {
+  try {
+    const response = await fetchSeguro(`/EstatusQr/${token}`, {
+      method: 'GET',
+    });
+
+    // IMPORTANTE: Manejar el 400 (QR no existe) como un estado de espera
+    if (!response.ok) {
+        return { escaneado: false };
+    }
+
+    return await response.json(); 
+  } catch (error) {
+    // Si hay error de red, devolvemos false para que el intervalo siga intentando
+    return { escaneado: false };
   }
 };
