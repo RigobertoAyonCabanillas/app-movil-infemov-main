@@ -110,7 +110,8 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
 
   } catch (error) {
     console.error("Error en login local:", error);
-    alert("No se pudo iniciar sesión.");
+    // REGLA DE ORO: No uses alerts aquí. Lanza el error para que el UI lo maneje.
+    throw error;
   }
 };
 

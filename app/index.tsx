@@ -13,11 +13,13 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   ScrollView,
-  StatusBar 
+  StatusBar,
+  Keyboard,
+  TouchableWithoutFeedback
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from "../components/UserContext";
-import { useAuthService } from "@/servicesdb/authService"; // Tu hook de las capturas
+import { useAuthService } from "@/servicesdb/authService"; 
 import { validarFolioAPI } from "@/services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -31,7 +33,6 @@ export default function Login() {
   const { setUsers } = useContext(UserContext);
   const router = useRouter();
   
-  // Extraemos la nueva función de tu hook personalizado
   const { loginUsuarioProceso, verificarSesionLocal } = useAuthService();
 
   const [folio, setFolio] = useState("");
@@ -41,20 +42,15 @@ export default function Login() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [cargandoFolio, setCargandoFolio] = useState(false);
   const [loadingLogin, setLoadingLogin] = useState(false);
-  
-  // Estado para que no parpadee el formulario al entrar si ya hay sesión
   const [cargandoPersistencia, setCargandoPersistencia] = useState(true);
 
   const emailRef = useRef("");
   const passwordRef = useRef("");
 
-  // --- LÓGICA DE PERSISTENCIA ---
   useEffect(() => {
     const checarAutoLogin = async () => {
       const usuarioEnCache = await verificarSesionLocal();
-      
       if (usuarioEnCache) {
-        // Si el hook encontró datos en SQLite, actualizamos el contexto y entramos
         setUsers({
           id: usuarioEnCache.id,
           token: usuarioEnCache.token,
@@ -65,30 +61,44 @@ export default function Login() {
         });
         router.replace("/(tabs)/home");
       } else {
-        // Si no hay nada, mostramos el Login/Folio normal
         setCargandoPersistencia(false);
       }
     };
-
     checarAutoLogin();
   }, []);
 
   const handleLogin = async () => {
     const email = emailRef.current;
     const password = passwordRef.current;
+
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Atención", "Por favor, ingresa tus credenciales");
+      Alert.alert("Campos incompletos", "Por favor, ingresa tu correo y contraseña.");
       return;
     }
+
     try {
       setLoadingLogin(true);
       const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected!);
+      
       if (usuarioLogueado) {
         setUsers(usuarioLogueado);
         router.replace("/(tabs)/home"); 
       }
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Error desconocido");
+      const errorMsg = error instanceof Error ? error.message : "";
+
+      if (errorMsg.includes("JSON") || errorMsg.includes("Network") || errorMsg.includes("fetch")) {
+        Alert.alert(
+          "Servidor fuera de servicio", 
+          "No pudimos conectar con el servidor. Inténtalo más tarde o revisa tu conexión."
+        );
+      } else {
+        Alert.alert(
+          "Credenciales incorrectas", 
+          "El correo o la contraseña no son válidos. Verifica tus datos e intenta de nuevo."
+        );
+      }
+      console.error("Detalle del error:", errorMsg);
     } finally {
       setLoadingLogin(false);
     }
@@ -99,7 +109,11 @@ export default function Login() {
       Alert.alert("Atención", "Por favor, ingresa el folio.");
       return;
     }
+
+    // Mejora iOS: Cerramos el teclado antes de cualquier acción para que no se quede pegado
+    Keyboard.dismiss();
     setCargandoFolio(true);
+
     try {
       const res = await validarFolioAPI(folio);
       if (res && res.id) {
@@ -108,13 +122,12 @@ export default function Login() {
         setShowConfirmModal(true); 
       }
     } catch (error) {
-      Alert.alert("Error", "Folio inválido.");
+      Alert.alert("Error de Validación", "El folio ingresado no es válido o no existe.");
     } finally {
       setCargandoFolio(false);
     }
   };
 
-  // Pantalla de carga estética mientras lee SQLite
   if (cargandoPersistencia) {
     return (
       <View style={[styles.mainContainer, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -127,67 +140,79 @@ export default function Login() {
   return (
     <SafeAreaView style={styles.mainContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled" bounces={false}>
-          <View style={styles.contentWrapper}>
-            <View style={styles.neonPanel}>
-              {!folioValidado ? (
-                <>
-                  <Text style={styles.neonTitle}>Bienvenido</Text>
-                  <Text style={styles.subTitleText}>Ingresa el Folio Proporcionado por tu Centro</Text>
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.neonInput}
-                      placeholder="Folio de Acceso"
-                      placeholderTextColor="#444" 
-                      value={folio}
-                      onChangeText={setFolio}
-                      keyboardType="numeric" 
-                    />
-                  </View>
-                  <TouchableOpacity style={styles.neonButton} onPress={manejarValidacionFolio} disabled={cargandoFolio}>
-                    {cargandoFolio ? <ActivityIndicator color={BRAND_GREEN} /> : <Text style={styles.buttonText}>CONTINUAR</Text>}
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.neonTitle}>Login</Text>
-                  <View style={styles.gymBadge}>
-                    <Text style={styles.gymBadgeText}>{nombreGimnasio}</Text>
-                  </View>
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.neonInput}
-                      placeholder="Correo Electrónico"
-                      placeholderTextColor="#444"
-                      onChangeText={(text) => (emailRef.current = text)}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                    />
-                    <TextInput
-                      style={[styles.neonInput, { marginTop: 15 }]}
-                      placeholder="Contraseña"
-                      placeholderTextColor="#444"
-                      secureTextEntry
-                      onChangeText={(text) => (passwordRef.current = text)}
-                    />
-                  </View>
-                  <TouchableOpacity style={styles.neonButton} onPress={handleLogin} disabled={loadingLogin}>
-                    {loadingLogin ? <ActivityIndicator color={BRAND_PINK} /> : <Text style={styles.buttonText}>ENTRAR</Text>}
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setFolioValidado(false)} style={styles.changeGymButton}>
-                    <Text style={styles.changeGymText}>CAMBIAR DE GIMNASIO</Text>
-                  </TouchableOpacity>
-                  <View style={styles.registerWrapper}>
-                    <Text style={styles.noAccountText}>¿Eres nuevo? </Text>
-                    <TouchableOpacity onPress={() => router.push({ pathname: "/register", params: { gymId: gymSelected, gymNombre: nombreGimnasio } })}>
-                      <Text style={styles.registerLink}>Regístrate aquí</Text>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          keyboardShouldPersistTaps="handled" 
+          bounces={false}
+        >
+          {/* Mejora UX: Al tocar el fondo negro se cierra el teclado */}
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.contentWrapper}>
+              <View style={styles.neonPanel}>
+                {!folioValidado ? (
+                  <>
+                    <Text style={styles.neonTitle}>Bienvenido</Text>
+                    <Text style={styles.subTitleText}>Ingresa el Folio Proporcionado por tu Centro</Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={styles.neonInput}
+                        placeholder="Folio de Acceso"
+                        placeholderTextColor="#444" 
+                        value={folio}
+                        onChangeText={setFolio}
+                        keyboardType="numeric" 
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <TouchableOpacity style={styles.neonButton} onPress={manejarValidacionFolio} disabled={cargandoFolio}>
+                      {cargandoFolio ? <ActivityIndicator color={BRAND_GREEN} /> : <Text style={styles.buttonText}>CONTINUAR</Text>}
                     </TouchableOpacity>
-                  </View>
-                </>
-              )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.neonTitle}>Login</Text>
+                    <View style={styles.gymBadge}>
+                      <Text style={styles.gymBadgeText}>{nombreGimnasio}</Text>
+                    </View>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={styles.neonInput}
+                        placeholder="Correo Electrónico"
+                        placeholderTextColor="#444"
+                        onChangeText={(text) => (emailRef.current = text)}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoCorrect={false}
+                      />
+                      <TextInput
+                        style={[styles.neonInput, { marginTop: 15 }]}
+                        placeholder="Contraseña"
+                        placeholderTextColor="#444"
+                        secureTextEntry
+                        onChangeText={(text) => (passwordRef.current = text)}
+                      />
+                    </View>
+                    <TouchableOpacity style={styles.neonButton} onPress={handleLogin} disabled={loadingLogin}>
+                      {loadingLogin ? <ActivityIndicator color={BRAND_PINK} /> : <Text style={styles.buttonText}>ENTRAR</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setFolioValidado(false)} style={styles.changeGymButton}>
+                      <Text style={styles.changeGymText}>CAMBIAR DE GIMNASIO</Text>
+                    </TouchableOpacity>
+                    <View style={styles.registerWrapper}>
+                      <Text style={styles.noAccountText}>¿Eres nuevo? </Text>
+                      <TouchableOpacity onPress={() => router.push({ pathname: "/register", params: { gymId: gymSelected, gymNombre: nombreGimnasio } })}>
+                        <Text style={styles.registerLink}>Regístrate aquí</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -198,18 +223,21 @@ export default function Login() {
             <View style={styles.modalInfoRow}>
               <View style={{flex: 1}}>
                 <Text style={styles.modalGymName}>{nombreGimnasio}</Text>
-                <Text style={styles.modalSubText}>este es tu centro deportivo?</Text>
+                <Text style={styles.modalSubText}>¿este es tu centro deportivo?</Text>
               </View>
               <View style={styles.imagePlaceholder} />
             </View>
-            <View style={styles.modalButtonsRow}>
+            <div style={styles.modalButtonsRow}>
               <TouchableOpacity onPress={() => setShowConfirmModal(false)} style={styles.modalCancelBtn}>
                 <Text style={{color: '#888', fontWeight: 'bold'}}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setShowConfirmModal(false); setFolioValidado(true); }} style={styles.modalConfirmBtn}>
+              <TouchableOpacity 
+                onPress={() => { setShowConfirmModal(false); setFolioValidado(true); }} 
+                style={styles.modalConfirmBtn}
+              >
                 <Text style={{color: BRAND_GREEN, fontWeight: 'bold'}}>Sí, entrar</Text>
               </TouchableOpacity>
-            </View>
+            </div>
           </View>
         </View>
       </Modal>
@@ -217,7 +245,6 @@ export default function Login() {
   );
 }
 
-// ... (Tus estilos se mantienen exactamente igual)
 const styles = StyleSheet.create({
   mainContainer: { flex: 1, backgroundColor: '#000' },
   scrollContainer: { 

@@ -54,6 +54,18 @@ export default function ReservacionesScreen() {
     obtenerCreditosLocal
   } = useAuthService();
 
+  const [clasesDisponibles, setClasesDisponibles] = useState<Clase[]>([]);
+  const [misClasesInscritas, setMisClasesInscritas] = useState<any[]>([]); 
+  const [loading, setLoading] = useState(true);
+  const [tieneAcceso, setTieneAcceso] = useState(false);
+  
+  const hoyISO = new Date().toISOString().split('T')[0];
+  const [expandedId, setExpandedId] = useState<string | null>(hoyISO);
+
+  const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
+  const [modalGestionVisible, setModalGestionVisible] = useState(false); 
+  const [claseSeleccionada, setClaseSeleccionada] = useState<Clase | null>(null); 
+
   const [inicioSemana] = useState(() => {
     const ahora = new Date();
     const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
@@ -70,18 +82,6 @@ export default function ReservacionesScreen() {
     d.setDate(inicioSemana.getDate() + i);
     return d;
   });
-  
-  const [clasesDisponibles, setClasesDisponibles] = useState<Clase[]>([]);
-  const [misClasesInscritas, setMisClasesInscritas] = useState<any[]>([]); 
-  const [loading, setLoading] = useState(true);
-  const [tieneAcceso, setTieneAcceso] = useState(false);
-  
-  const hoyISO = new Date().toISOString().split('T')[0];
-  const [expandedId, setExpandedId] = useState<string | null>(hoyISO);
-
-  const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
-  const [modalGestionVisible, setModalGestionVisible] = useState(false); 
-  const [claseSeleccionada, setClaseSeleccionada] = useState<Clase | null>(null); 
 
   const cargarDatos = async () => {
     if (!gimnasioId || !usuarioIdActual) return;
@@ -110,7 +110,7 @@ export default function ReservacionesScreen() {
       const inscripciones = await obtenerMisClasesProceso(usuarioIdActual, gimnasioId);
       setMisClasesInscritas(inscripciones || []);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error cargando datos:", error);
     } finally {
       setLoading(false);
     }
@@ -118,11 +118,28 @@ export default function ReservacionesScreen() {
   
   useFocusEffect(useCallback(() => { cargarDatos(); }, [gimnasioId]));
 
+  // --- ACCIONES CON CONFIRMACIÓN Y TÍTULOS DINÁMICOS ---
+
+  const confirmarCancelacion = (idClase: string | number) => {
+    Alert.alert(
+      "Confirmar Cancelación",
+      "¿Estás seguro de que deseas cancelar tu lugar?",
+      [
+        { text: "No, volver", style: "cancel" },
+        { 
+          text: "Sí, cancelar", 
+          style: "destructive", 
+          onPress: () => ejecutarCancelacion(idClase) 
+        }
+      ]
+    );
+  };
+
   const ejecutarCancelacion = async (idClase: string | number) => {
     setLoading(true);
     try {
       await cancelarInscripcionProceso(idClase);
-      Alert.alert("Éxito", "Reserva cancelada.");
+      Alert.alert("Reserva Cancelada", "Tu lugar ha sido liberado exitosamente.");
       await cargarDatos(); 
     } catch (error: any) {
       Alert.alert("Error", error.message);
@@ -133,16 +150,45 @@ export default function ReservacionesScreen() {
 
   const manejarInscripcionFinal = async (lugar: any) => {
     if (!claseSeleccionada) return;
-    setModalEquipoVisible(false);
-    setLoading(true);
-    try {
-      await inscribirAClaseProceso(claseSeleccionada.id, lugar, usuarioIdActual);
-      Alert.alert("Éxito", "Operación realizada correctamente.");
-      await cargarDatos();
-    } catch (error: any) {
-      Alert.alert("Error", error.message);
-    } finally {
-      setLoading(false);
+
+    const realizarPeticion = async () => {
+      setModalEquipoVisible(false);
+      setLoading(true);
+      try {
+        await inscribirAClaseProceso(claseSeleccionada.id, lugar, usuarioIdActual);
+        // Título dinámico para el éxito
+        const tituloExito = lugar === 0 ? "Lista de Espera" : "Inscripción Exitosa";
+        const mensajeExito = lugar === 0 
+          ? "Te hemos agregado a la lista de espera correctamente." 
+          : `Tu lugar #${lugar} ha sido reservado para ${claseSeleccionada.nombre}.`;
+        
+        Alert.alert(tituloExito, mensajeExito);
+        await cargarDatos();
+      } catch (error: any) {
+        Alert.alert("Error al inscribir", error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (lugar === 0) {
+      Alert.alert(
+        "Unirse a Espera",
+        "Esta clase no tiene lugares disponibles. ¿Quieres entrar en lista de espera?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Confirmar", onPress: realizarPeticion }
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Confirmar Lugar",
+        `¿Confirmas la reserva del lugar ${lugar}?`,
+        [
+          { text: "Cambiar", style: "cancel" },
+          { text: "Confirmar", onPress: realizarPeticion }
+        ]
+      );
     }
   };
 
@@ -187,7 +233,6 @@ export default function ReservacionesScreen() {
             contentContainerStyle={styles.modalContainer}
           >
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
-            
             <ScrollView contentContainerStyle={styles.scrollLugares}>
               {(() => {
                 const vacantes = claseSeleccionada?.vacantes || 0;
@@ -199,7 +244,6 @@ export default function ReservacionesScreen() {
                 while (index < elementos.length) {
                   const numEnFila = esFilaDeCuatro ? 4 : 3;
                   const filaActual = elementos.slice(index, index + numEnFila);
-                  
                   filas.push(
                     <View key={`fila-${index}`} style={styles.filaPersonalizada}>
                       {filaActual.map((num) => {
@@ -222,14 +266,12 @@ export default function ReservacionesScreen() {
                       })}
                     </View>
                   );
-                  
                   index += numEnFila;
-                  esFilaDeCuatro = !esFilaDeCuatro; // Cambia el patrón: 4 -> 3 -> 4...
+                  esFilaDeCuatro = !esFilaDeCuatro;
                 }
                 return filas;
               })()}
             </ScrollView>
-
             <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent} style={{marginTop: 15}}>
               Cerrar
             </Button>
@@ -252,7 +294,7 @@ export default function ReservacionesScreen() {
                               {esEspera ? '● EN ESPERA' : `● LUGAR: ${ins.lugar}`}
                           </Text>
                         </View>
-                        <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); ejecutarCancelacion(ins.claseId || ins.id); }}>
+                        <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); confirmarCancelacion(ins.claseId || ins.id); }}>
                           Cancelar
                         </Button>
                       </View>
@@ -306,13 +348,15 @@ export default function ReservacionesScreen() {
                           <View style={styles.rightContainer}>
                             {!esPasada && (
                               <>
-                                <Text style={{ color: estado.color, fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>{estado.label}</Text>
+                                <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.estadoLabel, { color: estado.color }]}>
+                                  {estado.label}
+                                </Text>
                                 <Button 
                                   mode="contained" 
                                   buttonColor={estado.color} 
                                   onPress={() => {
                                       if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
-                                        ejecutarCancelacion(clase.id);
+                                        confirmarCancelacion(clase.id);
                                       } else {
                                         if (!tieneAcceso) {
                                             Alert.alert("Acceso Denegado", "No cuentas con membresía o créditos.");
@@ -322,8 +366,9 @@ export default function ReservacionesScreen() {
                                         estado.tipo === 'LIBRE' ? setModalEquipoVisible(true) : manejarInscripcionFinal(0);
                                       }
                                   }}
-                                  labelStyle={{ fontSize: 11, color: '#000', fontWeight: 'bold' }}
+                                  labelStyle={styles.btnLabel}
                                   style={styles.btnAccion}
+                                  contentStyle={styles.btnContent}
                                 >
                                   {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : 'Inscribir'}
                                 </Button>
@@ -356,31 +401,41 @@ const styles = StyleSheet.create({
   accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5, borderRadius: 8 },
   accordionTitle: { color: COLORS.textMain, textTransform: 'capitalize' },
   listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, borderLeftWidth: 4 },
-  rightContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 100 },
-  btnAccion: { borderRadius: 20, height: 35, justifyContent: 'center' },
+  
+  rightContainer: { 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    minWidth: 115, 
+    paddingLeft: 5 
+  },
+  estadoLabel: { 
+    fontSize: 10, 
+    fontWeight: 'bold', 
+    marginBottom: 5, 
+    textAlign: 'center' 
+  },
+  btnAccion: { 
+    borderRadius: 20, 
+    width: '100%',
+  },
+  btnContent: {
+    height: 34, 
+  },
+  btnLabel: { 
+    fontSize: 11, 
+    fontWeight: 'bold', 
+    marginVertical: 0, 
+    marginHorizontal: 0,
+    color: '#000'
+  },
+  
   boxPasado: { borderWidth: 1, borderColor: COLORS.pasadoBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   textPasado: { color: COLORS.pasadoText, fontSize: 11, fontWeight: 'bold' },
-  
-  // Estilos del Modal y Cuadrícula 4-3-4
   modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 20, maxHeight: '85%' },
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, fontSize: 16 },
   scrollLugares: { alignItems: 'center', paddingBottom: 10 },
-  filaPersonalizada: { 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    width: '100%', 
-    gap: 15,           // Espacio entre botones
-    marginBottom: 15   // Espacio entre filas
-  },
-  botonLugar: { 
-    width: 50, 
-    height: 50, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    borderRadius: 12,
-    elevation: 4
-  },
-
+  filaPersonalizada: { flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 15, marginBottom: 15 },
+  botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 12, elevation: 4 },
   modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
   itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
 });
