@@ -45,7 +45,18 @@ export default function TabLayout() {
                 }}
             />
 
-            {/* 4. CREDITOS */}
+            {/* 4. TIENDA (Anteriormente métodos de pago) */}
+            <Tabs.Screen
+                name="tienda"
+                options={{
+                    title: 'Tienda',
+                    tabBarIcon: ({ color }) => <Ionicons name="cart-outline" size={24} color={color} />,
+                    // Si quieres que solo los clientes vean la tienda y no el coach:
+                    // href: esCoach ? null : undefined, 
+                }}
+            />
+
+            {/* 5. CREDITOS */}
             <Tabs.Screen
                 name="creditos"
                 options={{
@@ -55,7 +66,7 @@ export default function TabLayout() {
                 }}
             />
 
-            {/* 5. PERFIL (Configurado con el botón de ajustes) */}
+            {/* 6. PERFIL */}
             <Tabs.Screen
                 name="perfil"
                 options={{

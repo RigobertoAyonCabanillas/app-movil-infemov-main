@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CryptoJS from 'crypto-js';
 
-export const API_URL = 'http://192.168.0.106:5254/api';
-const API_URL2 = 'http://192.168.0.137:5254/api';
+export const API_URL = 'http://100.116.49.102:5254/api';
+const API_URL2 = 'http://192.168.0.106:5254/api';
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#

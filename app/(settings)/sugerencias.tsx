@@ -1,15 +1,20 @@
-import React, { useContext, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, Surface, HelperText, IconButton } from 'react-native-paper';
+import React, { useContext, useState, useRef } from 'react';
+import { 
+    View, StyleSheet, ScrollView, Alert, 
+    KeyboardAvoidingView, Platform 
+} from 'react-native';
+import { 
+    Text, TextInput, Button, Surface, 
+    HelperText, IconButton 
+} from 'react-native-paper';
 import { useAuthService } from "@/servicesdb/authService";
 import { useRouter } from 'expo-router';
 import { UserContext } from '@/components/UserContext';
 
-// Definición de colores basada en tu UI actual
 const COLORS = {
     bg: '#121212',
     cardBg: '#1e1e1e',
-    accent: '#39FF14', // Verde neón de tus botones e indicadores
+    accent: '#39FF14', 
     textMain: '#ffffff',
     textSecondary: '#aaaaaa',
     stars: '#FFD700'
@@ -25,13 +30,19 @@ export default function SugerenciasScreen() {
     const [loading, setLoading] = useState(false);
     const MAX_CHARS = 500;
 
+    // Control de cambio de texto optimizado
+    const handleTextChange = (text: string) => {
+        // Al usar maxLength en el componente, 'text' ya viene limitado por el sistema
+        // pero mantenemos esto por seguridad para asegurar el conteo exacto.
+        setComentario(text);
+    };
+
     const handleEnviar = async () => {
         if (comentario.trim().length < 5) {
             Alert.alert("Aviso", "Por favor, escribe una sugerencia detallada.");
             return;
         }
 
-        // Prioridad de IDs según tu estructura de contexto
         const gymId = users?.GimnasioActual || users?.gymId || users?.IdGym;
 
         setLoading(true);
@@ -70,7 +81,7 @@ export default function SugerenciasScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
             style={styles.container}
         >
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                 <Text variant="headlineSmall" style={styles.title}>
                     Dinos qué piensas
                 </Text>
@@ -84,9 +95,7 @@ export default function SugerenciasScreen() {
                     <TextInput
                         label="Escribe aquí tu comentario..."
                         value={comentario}
-                        onChangeText={(text) => {
-                            if (text.length <= MAX_CHARS) setComentario(text);
-                        }}
+                        onChangeText={handleTextChange}
                         mode="outlined"
                         multiline
                         numberOfLines={8}
@@ -97,13 +106,20 @@ export default function SugerenciasScreen() {
                         activeOutlineColor={COLORS.accent}
                         placeholderTextColor="#666"
                         placeholder="Ej: Me gustaría que hubiera más equipo de cardio..."
+                        // ESTO ES CLAVE: Impide que el sistema pegue más de 500 caracteres
+                        maxLength={MAX_CHARS} 
+                        // Evita que el teclado cambie el diseño al escribir rápido
+                        blurOnSubmit={false}
                     />
                     
                     <View style={styles.footerRow}>
-                        <HelperText type="info" visible={true} style={{ color: COLORS.textSecondary }}>
+                        <HelperText type="info" visible={true} style={{ color: COLORS.textSecondary, paddingLeft: 0 }}>
                             Mínimo 5 caracteres
                         </HelperText>
-                        <Text style={[styles.counter, comentario.length >= MAX_CHARS && { color: '#ff5252' }]}>
+                        <Text style={[
+                            styles.counter, 
+                            comentario.length >= MAX_CHARS && { color: COLORS.accent, fontWeight: 'bold' }
+                        ]}>
                             {comentario.length} / {MAX_CHARS}
                         </Text>
                     </View>
@@ -115,7 +131,7 @@ export default function SugerenciasScreen() {
                         disabled={loading || comentario.trim().length < 5}
                         style={styles.button}
                         buttonColor={COLORS.accent}
-                        textColor="#000" // Texto oscuro sobre botón neón para mejor contraste
+                        textColor="#000"
                         contentStyle={{ height: 50 }}
                     >
                         {loading ? "Enviando..." : "Enviar Comentarios"}
@@ -175,7 +191,6 @@ const styles = StyleSheet.create({
     counter: {
         fontSize: 12,
         color: COLORS.textSecondary,
-        marginRight: 8,
     },
     button: {
         borderRadius: 14,

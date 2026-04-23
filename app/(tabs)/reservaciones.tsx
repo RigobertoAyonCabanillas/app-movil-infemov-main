@@ -1,15 +1,21 @@
-import React, { useState, useContext, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, StatusBar, ActivityIndicator, Alert, TouchableOpacity, Dimensions } from 'react-native';
-import { 
-  Text, List, Surface, DefaultTheme, 
-  Provider as PaperProvider, Portal, Modal, Button, IconButton 
-} from 'react-native-paper';
-import { format, isBefore, parse } from 'date-fns'; 
-import { es } from 'date-fns/locale'; 
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { format, isBefore, parse, startOfDay } from 'date-fns';
+import { es } from 'date-fns/locale';
+import React, { useCallback, useContext, useState, useRef, useEffect } from 'react';
+import { ActivityIndicator, Alert, Dimensions, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  Button,
+  DefaultTheme,
+  IconButton,
+  List,
+  Modal,
+  Provider as PaperProvider, Portal,
+  Surface,
+  Text
+} from 'react-native-paper';
 
-import { UserContext } from '../../components/UserContext'; 
 import { useAuthService } from '@/servicesdb/authService';
+import { UserContext } from '../../components/UserContext';
 
 const { width } = Dimensions.get('window');
 
@@ -37,6 +43,7 @@ const COLORS = {
   espera: '#FFD700', 
   pasadoText: '#B0B0B0', 
   pasadoBorder: '#444444', 
+  bloqueado: '#555555',
 };
 
 export default function ReservacionesScreen() {
@@ -44,6 +51,8 @@ export default function ReservacionesScreen() {
   const { users } = useContext(UserContext);
   const gimnasioId = Number(users?.gymId); 
   const usuarioIdActual = Number(users?.id); 
+
+  const scrollLugaresRef = useRef<ScrollView>(null);
 
   const { 
     sincronizarClasesGimnasio, 
@@ -65,6 +74,14 @@ export default function ReservacionesScreen() {
   const [modalEquipoVisible, setModalEquipoVisible] = useState(false);
   const [modalGestionVisible, setModalGestionVisible] = useState(false); 
   const [claseSeleccionada, setClaseSeleccionada] = useState<Clase | null>(null); 
+
+  useEffect(() => {
+    if (modalEquipoVisible) {
+      setTimeout(() => {
+        scrollLugaresRef.current?.scrollTo({ y: 0, animated: true });
+      }, 150); 
+    }
+  }, [modalEquipoVisible]);
 
   const [inicioSemana] = useState(() => {
     const ahora = new Date();
@@ -118,19 +135,13 @@ export default function ReservacionesScreen() {
   
   useFocusEffect(useCallback(() => { cargarDatos(); }, [gimnasioId]));
 
-  // --- ACCIONES CON CONFIRMACIÓN Y TÍTULOS DINÁMICOS ---
-
   const confirmarCancelacion = (idClase: string | number) => {
     Alert.alert(
       "Confirmar Cancelación",
       "¿Estás seguro de que deseas cancelar tu lugar?",
       [
         { text: "No, volver", style: "cancel" },
-        { 
-          text: "Sí, cancelar", 
-          style: "destructive", 
-          onPress: () => ejecutarCancelacion(idClase) 
-        }
+        { text: "Sí, cancelar", style: "destructive", onPress: () => ejecutarCancelacion(idClase) }
       ]
     );
   };
@@ -156,7 +167,6 @@ export default function ReservacionesScreen() {
       setLoading(true);
       try {
         await inscribirAClaseProceso(claseSeleccionada.id, lugar, usuarioIdActual);
-        // Título dinámico para el éxito
         const tituloExito = lugar === 0 ? "Lista de Espera" : "Inscripción Exitosa";
         const mensajeExito = lugar === 0 
           ? "Te hemos agregado a la lista de espera correctamente." 
@@ -172,32 +182,27 @@ export default function ReservacionesScreen() {
     };
 
     if (lugar === 0) {
-      Alert.alert(
-        "Unirse a Espera",
-        "Esta clase no tiene lugares disponibles. ¿Quieres entrar en lista de espera?",
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Confirmar", onPress: realizarPeticion }
-        ]
-      );
+      Alert.alert("Unirse a Espera", "¿Quieres entrar en lista de espera?", [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Confirmar", onPress: realizarPeticion }
+      ]);
     } else {
-      Alert.alert(
-        "Confirmar Lugar",
-        `¿Confirmas la reserva del lugar ${lugar}?`,
-        [
-          { text: "Cambiar", style: "cancel" },
-          { text: "Confirmar", onPress: realizarPeticion }
-        ]
-      );
+      Alert.alert("Confirmar Lugar", `¿Confirmas la reserva del lugar ${lugar}?`, [
+        { text: "Cambiar", style: "cancel" },
+        { text: "Confirmar", onPress: realizarPeticion }
+      ]);
     }
   };
 
   const obtenerInfoEstado = (clase: Clase) => {
     const yaPaso = (fecha: string, hora: string) => {
-        const ahora = new Date();
-        const fechaLimpia = fecha.split('T')[0]; 
-        const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
-        return isBefore(fechaClase, ahora);
+        try {
+            if (!fecha || !hora) return false;
+            const ahora = new Date();
+            const fechaLimpia = fecha.split('T')[0]; 
+            const fechaClase = parse(`${fechaLimpia} ${hora}`, 'yyyy-MM-dd HH:mm:ss', new Date());
+            return isBefore(fechaClase, ahora);
+        } catch (e) { return false; }
     };
 
     if (yaPaso(clase.dia, clase.horaInicio)) return { color: COLORS.pasadoText, label: 'PASADO', tipo: 'EXPIRADO' };
@@ -215,6 +220,14 @@ export default function ReservacionesScreen() {
       };
     }
 
+    const fechaClaseCorte = (clase.dia || "").substring(0, 10);
+    const tieneConflicto = misClasesInscritas.some(ins => 
+        (ins.dia || ins.fecha || "").substring(0, 10) === fechaClaseCorte && 
+        ins.horaInicio === clase.horaInicio
+    );
+
+    if (tieneConflicto) return { color: COLORS.bloqueado, label: 'HORARIO OCUPADO', tipo: 'BLOQUEADO' };
+
     const estaLleno = (clase.lugaresOcupados || []).length >= clase.vacantes;
     if (estaLleno) return { color: COLORS.espera, label: 'LISTA DE ESPERA', tipo: 'DISPONIBLE_ESPERA' };
     
@@ -227,20 +240,21 @@ export default function ReservacionesScreen() {
         <StatusBar barStyle="light-content" />
         
         <Portal>
-          <Modal 
-            visible={modalEquipoVisible} 
-            onDismiss={() => setModalEquipoVisible(false)} 
-            contentContainerStyle={styles.modalContainer}
-          >
+          {/* MODAL SELECCIÓN DE LUGAR */}
+          <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
-            <ScrollView contentContainerStyle={styles.scrollLugares}>
+            
+            <ScrollView 
+              ref={scrollLugaresRef}
+              contentContainerStyle={styles.scrollLugaresContent} 
+              showsVerticalScrollIndicator={true}
+            >
               {(() => {
                 const vacantes = claseSeleccionada?.vacantes || 0;
                 const elementos = Array.from({ length: vacantes }, (_, i) => i + 1);
                 const filas = [];
                 let index = 0;
                 let esFilaDeCuatro = true;
-
                 while (index < elementos.length) {
                   const numEnFila = esFilaDeCuatro ? 4 : 3;
                   const filaActual = elementos.slice(index, index + numEnFila);
@@ -251,16 +265,11 @@ export default function ReservacionesScreen() {
                         return (
                           <TouchableOpacity 
                             key={num} 
-                            disabled={estaOcupado}
-                            onPress={() => manejarInscripcionFinal(num)}
-                            style={[
-                              styles.botonLugar, 
-                              { backgroundColor: estaOcupado ? '#333' : COLORS.accent }
-                            ]}
+                            disabled={estaOcupado} 
+                            onPress={() => manejarInscripcionFinal(num)} 
+                            style={[styles.botonLugar, { backgroundColor: estaOcupado ? '#333' : COLORS.accent }]}
                           >
-                            <Text style={{ fontWeight: 'bold', color: estaOcupado ? '#666' : '#000' }}>
-                              {num}
-                            </Text>
+                            <Text style={{ fontWeight: 'bold', color: estaOcupado ? '#666' : '#000' }}>{num}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -272,11 +281,13 @@ export default function ReservacionesScreen() {
                 return filas;
               })()}
             </ScrollView>
-            <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent} style={{marginTop: 15}}>
-              Cerrar
-            </Button>
+
+            <View style={styles.footerModal}>
+              <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+            </View>
           </Modal>
 
+          {/* MODAL GESTIÓN */}
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
               <Text style={styles.modalTitle}>MIS PRÓXIMAS CLASES</Text>
               <ScrollView style={{ maxHeight: 400 }}>
@@ -285,32 +296,37 @@ export default function ReservacionesScreen() {
                 ) : (
                   misClasesInscritas.map((ins, index) => {
                     const esEspera = (ins.lugar === 0 || ins.lugar === "0");
+                    const fechaMostrar = (ins.dia || ins.fecha || "").substring(0, 10);
                     return (
                       <View key={index} style={styles.itemGestion}>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: COLORS.textMain, fontWeight: 'bold' }}>{ins.nombreClase}</Text>
-                          <Text style={{ color: COLORS.textSub, fontSize: 12 }}>{ins.dia} | {ins.horaInicio}</Text>
+                          <Text style={{ color: COLORS.textSub, fontSize: 12 }}>{fechaMostrar} | {ins.horaInicio}</Text>
                           <Text style={{ color: esEspera ? COLORS.espera : COLORS.inscrito, fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
                               {esEspera ? '● EN ESPERA' : `● LUGAR: ${ins.lugar}`}
                           </Text>
                         </View>
-                        <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); confirmarCancelacion(ins.claseId || ins.id); }}>
-                          Cancelar
-                        </Button>
+                        <Button textColor={COLORS.lleno} onPress={() => { setModalGestionVisible(false); confirmarCancelacion(ins.claseId || ins.id); }}>Cancelar</Button>
                       </View>
                     );
                   })
                 )}
               </ScrollView>
-              <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+              <View style={styles.footerModal}>
+                <Button onPress={() => setModalGestionVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
+              </View>
           </Modal>
         </Portal>
 
         <Surface style={styles.header}>
           <View style={styles.headerRow}>
-            <IconButton icon="menu" iconColor={COLORS.textMain} size={25} />
             <Text style={styles.headerTitle}>RESERVACIONES</Text>
-            <IconButton icon="calendar-check" iconColor={COLORS.accent} size={28} onPress={() => setModalGestionVisible(true)} />
+            <IconButton 
+              icon="calendar-check" 
+              iconColor={COLORS.accent} 
+              size={28} 
+              onPress={() => setModalGestionVisible(true)} 
+            />
           </View>
         </Surface>
 
@@ -320,28 +336,44 @@ export default function ReservacionesScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {diasSemana.map((dia) => {
               const fechaID = dia.toISOString().split('T')[0];
-              const clasesDelDia = clasesDisponibles.filter(c => c.dia.split('T')[0] === fechaID);
+              const clasesDelDia = clasesDisponibles.filter(c => (c.dia || "").substring(0, 10) === fechaID);
               const esHoy = fechaID === hoyISO;
+              const diaYaPaso = isBefore(startOfDay(dia), startOfDay(new Date()));
+              const sinClases = clasesDelDia.length === 0;
+              const estaDeshabilitado = diaYaPaso || sinClases;
 
               return (
                 <List.Accordion
                   key={fechaID}
                   title={format(dia, "EEEE d 'de' MMMM", { locale: es })}
                   expanded={expandedId === fechaID}
-                  onPress={() => setExpandedId(expandedId === fechaID ? null : fechaID)}
-                  style={styles.accordion}
-                  titleStyle={[styles.accordionTitle, esHoy && { color: COLORS.accent, fontWeight: 'bold' }]}
+                  onPress={() => !estaDeshabilitado && setExpandedId(expandedId === fechaID ? null : fechaID)}
+                  style={[styles.accordion, estaDeshabilitado && { opacity: 0.5 }]}
+                  rippleColor="transparent"
+                  titleStyle={[
+                    styles.accordionTitle, 
+                    esHoy && { color: COLORS.accent, fontWeight: 'bold' },
+                    estaDeshabilitado && { color: COLORS.pasadoText }
+                  ]}
+                  left={props => (
+                    <List.Icon 
+                      {...props} 
+                      icon={estaDeshabilitado ? "calendar-remove" : "calendar"} 
+                      color={estaDeshabilitado ? COLORS.pasadoText : (esHoy ? COLORS.accent : COLORS.textSub)} 
+                    />
+                  )}
                 >
                   {clasesDelDia.map((clase) => {
                     const estado = obtenerInfoEstado(clase);
                     const esPasada = estado.tipo === 'EXPIRADO';
+                    const esBloqueado = estado.tipo === 'BLOQUEADO';
 
                     return (
                       <List.Item
                         key={clase.id}
                         title={clase.nombre}
                         description={`${clase.horaInicio} - ${clase.horaFin}\nCoach: ${clase.coach}`}
-                        titleStyle={{ color: esPasada ? COLORS.pasadoText : COLORS.textMain, fontWeight: 'bold' }}
+                        titleStyle={{ color: (esPasada || esBloqueado) ? COLORS.pasadoText : COLORS.textMain, fontWeight: 'bold' }}
                         descriptionStyle={{ color: COLORS.textSub }}
                         style={[styles.listItem, { borderLeftColor: esPasada ? COLORS.pasadoBorder : estado.color }]}
                         right={() => (
@@ -353,24 +385,21 @@ export default function ReservacionesScreen() {
                                 </Text>
                                 <Button 
                                   mode="contained" 
-                                  buttonColor={estado.color} 
+                                  buttonColor={esBloqueado ? '#B0B0B0' : estado.color} 
                                   onPress={() => {
+                                      if (esBloqueado) return; 
                                       if (estado.tipo === 'INSCRITO' || estado.tipo === 'ESPERA') {
                                         confirmarCancelacion(clase.id);
-                                      } else {
-                                        if (!tieneAcceso) {
-                                            Alert.alert("Acceso Denegado", "No cuentas con membresía o créditos.");
-                                            return;
-                                        }
+                                      } else if (tieneAcceso) {
                                         setClaseSeleccionada(clase);
                                         estado.tipo === 'LIBRE' ? setModalEquipoVisible(true) : manejarInscripcionFinal(0);
                                       }
                                   }}
-                                  labelStyle={styles.btnLabel}
+                                  labelStyle={[styles.btnLabel, { color: '#000000' }]}
                                   style={styles.btnAccion}
                                   contentStyle={styles.btnContent}
                                 >
-                                  {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : 'Inscribir'}
+                                  {(estado.tipo === 'ESPERA' || estado.tipo === 'INSCRITO') ? 'Cancelar' : esBloqueado ? 'Ocupado' : 'Inscribir'}
                                 </Button>
                               </>
                             )}
@@ -395,47 +424,37 @@ export default function ReservacionesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   header: { paddingVertical: 10, backgroundColor: COLORS.cardBg, elevation: 4 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10 },
-  headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18, letterSpacing: 1 },
+  headerRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 20 
+  },
+  headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18, letterSpacing: 3 },
   scrollContent: { padding: 15 },
   accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5, borderRadius: 8 },
   accordionTitle: { color: COLORS.textMain, textTransform: 'capitalize' },
   listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, borderLeftWidth: 4 },
-  
-  rightContainer: { 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    minWidth: 115, 
-    paddingLeft: 5 
-  },
-  estadoLabel: { 
-    fontSize: 10, 
-    fontWeight: 'bold', 
-    marginBottom: 5, 
-    textAlign: 'center' 
-  },
-  btnAccion: { 
-    borderRadius: 20, 
-    width: '100%',
-  },
-  btnContent: {
-    height: 34, 
-  },
-  btnLabel: { 
-    fontSize: 11, 
-    fontWeight: 'bold', 
-    marginVertical: 0, 
-    marginHorizontal: 0,
-    color: '#000'
-  },
-  
+  rightContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 115, paddingLeft: 5 },
+  estadoLabel: { fontSize: 10, fontWeight: 'bold', marginBottom: 5, textAlign: 'center' },
+  btnAccion: { borderRadius: 20, width: '100%' },
+  btnContent: { height: 34 },
+  btnLabel: { fontSize: 11, fontWeight: 'bold', marginVertical: 0, marginHorizontal: 0 },
   boxPasado: { borderWidth: 1, borderColor: COLORS.pasadoBorder, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   textPasado: { color: COLORS.pasadoText, fontSize: 11, fontWeight: 'bold' },
-  modalContainer: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 20, maxHeight: '85%' },
+  modalContainer: { backgroundColor: COLORS.cardBg, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, margin: 20, borderRadius: 20, maxHeight: '85%' },
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, fontSize: 16 },
-  scrollLugares: { alignItems: 'center', paddingBottom: 10 },
+  scrollLugaresContent: { alignItems: 'center', paddingBottom: 10 },
   filaPersonalizada: { flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 15, marginBottom: 15 },
   botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 12, elevation: 4 },
   modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },
   itemGestion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
+  footerModal: {
+    paddingTop: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: '#333',
+    marginTop: 10,
+    width: '100%',
+    alignItems: 'center'
+  },
 });

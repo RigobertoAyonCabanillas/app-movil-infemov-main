@@ -1,13 +1,13 @@
-import React, { useContext, useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Modal, TouchableOpacity, StatusBar, Image } from 'react-native';
-import { TextInput, Button, List, Divider, Text, Portal, Dialog, IconButton } from 'react-native-paper';
 import { UserContext } from "@/components/UserContext";
+import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
 import { useAuthService } from "@/servicesdb/authService";
-import { gestionarSucursalesApi, actualizarPasswordApi } from "@/services/api";
 import { router } from "expo-router";
-import CountryPicker from 'react-native-country-picker-modal';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import CountryPicker, { FlagType, getAllCountries } from 'react-native-country-picker-modal';
 import MaskInput from 'react-native-mask-input';
+import { Button, Dialog, Divider, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const COLORS = {
     bg: '#000000',
@@ -32,8 +32,9 @@ const CuentaScreen = () => {
     
     const [telefono, setTelefono] = useState('');
     const [telefonoLimpio, setTelefonoLimpio] = useState('');
-    const [countryCode, setCountryCode] = useState<any>('MX');
-    const [callingCode, setCallingCode] = useState('52');
+    // Eliminamos 'MX' por defecto para que sea dinámico
+    const [countryCode, setCountryCode] = useState<any>(''); 
+    const [callingCode, setCallingCode] = useState('');
     const [showCountryPicker, setShowCountryPicker] = useState(false);
     const phoneMask = ['(', /\d/, /\d/, /\d/, ')', ' ', /\d/, /\d/, /\d/, '-', /\d/, /\d/, /\d/, /\d/];
 
@@ -48,18 +49,57 @@ const CuentaScreen = () => {
     const [gymSeleccionadoId, setGymSeleccionadoId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
 
+    const hayCambios = useMemo(() => {
+        if (!users) return false;
+        const telDb = users.telefono || users.Telefono || "";
+        const soloNumerosDb = telDb.replace(/\D/g, '');
+        const diezDigitosDb = soloNumerosDb.slice(-10);
+        const ladaDb = soloNumerosDb.slice(0, soloNumerosDb.length - 10) || "52";
+
+        return (
+            nombre !== (users.nombres || users.Nombre || "") ||
+            apellidoP !== (users.apellidoPaterno || users.ApellidoPaterno || "") ||
+            apellidoM !== (users.apellidoMaterno || users.ApellidoMaterno || "") ||
+            telefonoLimpio !== diezDigitosDb ||
+            callingCode !== ladaDb
+        );
+    }, [nombre, apellidoP, apellidoM, telefonoLimpio, callingCode, users]);
+
     useEffect(() => {
         if (users) {
             setNombre(users.nombres || users.Nombre || "");
             setApellidoP(users.apellidoPaterno || users.ApellidoPaterno || "");
             setApellidoM(users.apellidoMaterno || users.ApellidoMaterno || "");
             setCorreo(users.correo || users.Correo || "");
-
+            
             const telDb = users.telefono || users.Telefono || "";
             const soloNumeros = telDb.replace(/\D/g, '');
             const diezDigitos = soloNumeros.slice(-10);
+            const ladaDb = soloNumeros.slice(0, soloNumeros.length - 10) || "52";
+            
             setTelefonoLimpio(diezDigitos);
             setTelefono(diezDigitos); 
+            setCallingCode(ladaDb);
+
+            // FUNCIÓN MEJORADA: Busca el país y actualiza el countryCode inmediatamente
+            const inicializarBandera = async () => {
+                try {
+                    const countries = await getAllCountries(FlagType.FLAT);
+                    const countryMatch = countries.find(c => 
+                        c.callingCode.some(code => code === ladaDb)
+                    );
+                    if (countryMatch) {
+                        setCountryCode(countryMatch.cca2);
+                    } else {
+                        // Fallback a México si no encuentra nada
+                        setCountryCode('MX');
+                    }
+                } catch (e) {
+                    setCountryCode('MX');
+                    console.error("Error al inicializar bandera", e);
+                }
+            };
+            inicializarBandera();
 
             const cargarSucursales = async () => {
                 try {
@@ -87,7 +127,6 @@ const CuentaScreen = () => {
             Alert.alert("Error", "El teléfono debe ser de 10 dígitos.");
             return;
         }
-
         setLoading(true);
         try {
             const nuevosDatos = {
@@ -97,7 +136,6 @@ const CuentaScreen = () => {
                 Correo: correo,
                 Telefono: `+${callingCode}${telefonoLimpio}` 
             };
-
             const res = await sincronizarActualizacionPerfil(users.id || users.Id, nuevosDatos);
             if (res.success) {
                 setUsers((prev: any) => ({ ...prev, ...nuevosDatos, nombres: nombre }));
@@ -110,12 +148,15 @@ const CuentaScreen = () => {
     };
 
     const handleConfirmarCambioPass = async () => {
+        if (oldPassword === newPassword) {
+            Alert.alert("Atención", "La nueva contraseña debe ser diferente a la actual.");
+            return;
+        }
         const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
         if (!complejidadRegex.test(newPassword)) {
             Alert.alert("Seguridad", "La contraseña debe tener 8+ caracteres, mayúscula, minúscula y número.");
             return;
         }
-
         setLoading(true);
         try {
             const res = await actualizarPasswordApi(oldPassword, newPassword, users.token || users.Token);
@@ -175,8 +216,12 @@ const CuentaScreen = () => {
                         <Text style={styles.phoneLabel}>Número de Teléfono</Text>
                         <View style={styles.phoneContainer}>
                             <TouchableOpacity onPress={() => setShowCountryPicker(true)} style={styles.countryBtn}>
-                                <Image source={{ uri: `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png` }} style={styles.flag} />
-                                <Text style={styles.callingCode}>+{callingCode}</Text>
+                                {countryCode ? (
+                                    <Image source={{ uri: `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png` }} style={styles.flag} />
+                                ) : (
+                                    <View style={[styles.flag, { backgroundColor: '#333' }]} />
+                                )}
+                                <Text style={styles.callingCode}>+{callingCode || '...'}</Text>
                             </TouchableOpacity>
                             <MaskInput
                                 value={telefono}
@@ -199,13 +244,11 @@ const CuentaScreen = () => {
                             onRequestClose={() => setShowCountryPicker(false)}
                         >
                             <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-                                {/* Título centrado sin botón de cerrar duplicado */}
                                 <View style={styles.modalHeaderCustom}>
                                     <Text style={styles.modalHeaderTitle}>Selecciona tu país</Text>
                                 </View>
-
                                 <CountryPicker
-                                    countryCode={countryCode}
+                                    countryCode={countryCode || 'MX'}
                                     visible={showCountryPicker}
                                     onSelect={(c) => { 
                                         setCountryCode(c.cca2); 
@@ -213,11 +256,7 @@ const CuentaScreen = () => {
                                         setShowCountryPicker(false); 
                                     }}
                                     onClose={() => setShowCountryPicker(false)}
-                                    withFilter
-                                    withFlag
-                                    withEmoji
-                                    withAlphaFilter
-                                    withCallingCode
+                                    withFilter withFlag withEmoji withAlphaFilter withCallingCode
                                     withModal={false} 
                                     theme={{ 
                                         backgroundColor: COLORS.bg, 
@@ -229,7 +268,15 @@ const CuentaScreen = () => {
                             </SafeAreaView>
                         </Modal>
 
-                        <Button mode="contained" onPress={handleGuardarPerfil} loading={loading} buttonColor={COLORS.brandPink} textColor="#000" style={styles.mainBtn}>
+                        <Button 
+                            mode="contained" 
+                            onPress={handleGuardarPerfil} 
+                            loading={loading} 
+                            disabled={!hayCambios || loading}
+                            buttonColor={COLORS.brandPink} 
+                            textColor="#000" 
+                            style={[styles.mainBtn, (!hayCambios && !loading) && { opacity: 0.6 }]}
+                        >
                             Guardar Perfil
                         </Button>
                     </View>
@@ -315,38 +362,14 @@ const styles = StyleSheet.create({
     headerProfile: { padding: 40, alignItems: 'center' },
     welcomeText: { fontSize: 22, fontWeight: 'bold', color: COLORS.textMain },
     subText: { color: COLORS.textSub, marginTop: 5 },
-    sectionCard: {
-        backgroundColor: COLORS.cardBg,
-        marginHorizontal: 15,
-        borderRadius: 15,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: COLORS.divider,
-        marginBottom: 20
-    },
+    sectionCard: { backgroundColor: COLORS.cardBg, marginHorizontal: 15, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.divider, marginBottom: 20 },
     accordion: { backgroundColor: COLORS.cardBg },
     formContainer: { padding: 20, backgroundColor: COLORS.cardBg },
     input: { marginBottom: 10, backgroundColor: COLORS.inputBg },
     mainBtn: { marginTop: 20, borderRadius: 8 },
     phoneLabel: { color: COLORS.brandPink, fontSize: 12, marginBottom: 6, marginLeft: 4, fontWeight: '600' },
-    phoneContainer: { 
-        flexDirection: 'row', 
-        height: 50, 
-        backgroundColor: '#000', 
-        borderRadius: 12, 
-        borderWidth: 1, 
-        borderColor: COLORS.pinkFade, 
-        overflow: 'hidden',
-        marginBottom: 10
-    },
-    countryBtn: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        paddingHorizontal: 12, 
-        backgroundColor: '#111', 
-        borderRightWidth: 1, 
-        borderRightColor: COLORS.pinkFade 
-    },
+    phoneContainer: { flexDirection: 'row', height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: COLORS.pinkFade, overflow: 'hidden', marginBottom: 10 },
+    countryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#111', borderRightWidth: 1, borderRightColor: COLORS.pinkFade },
     flag: { width: 25, height: 18, marginRight: 8, borderRadius: 2 },
     callingCode: { color: COLORS.brandPink, fontWeight: 'bold' },
     phoneInput: { flex: 1, color: '#fff', paddingHorizontal: 15 },
@@ -356,18 +379,8 @@ const styles = StyleSheet.create({
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 20, textAlign: 'center' },
     gymItem: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.divider, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
     passConfirmBox: { padding: 15, backgroundColor: '#111', borderRadius: 12, marginVertical: 10, borderWidth: 1, borderColor: '#333' },
-    modalHeaderCustom: { 
-        padding: 15, 
-        borderBottomWidth: 1, 
-        borderBottomColor: COLORS.divider,
-        backgroundColor: COLORS.bg,
-        alignItems: 'center'
-    },
-    modalHeaderTitle: { 
-        color: COLORS.textMain, 
-        fontSize: 18, 
-        fontWeight: 'bold'
-    }
+    modalHeaderCustom: { padding: 15, borderBottomWidth: 1, borderBottomColor: COLORS.divider, backgroundColor: COLORS.bg, alignItems: 'center' },
+    modalHeaderTitle: { color: COLORS.textMain, fontSize: 18, fontWeight: 'bold' }
 });
 
 export default CuentaScreen;

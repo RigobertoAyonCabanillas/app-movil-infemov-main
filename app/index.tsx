@@ -227,7 +227,7 @@ export default function Login() {
               </View>
               <View style={styles.imagePlaceholder} />
             </View>
-            <div style={styles.modalButtonsRow}>
+            <View style={styles.modalButtonsRow}>
               <TouchableOpacity onPress={() => setShowConfirmModal(false)} style={styles.modalCancelBtn}>
                 <Text style={{color: '#888', fontWeight: 'bold'}}>Cancelar</Text>
               </TouchableOpacity>
@@ -237,7 +237,7 @@ export default function Login() {
               >
                 <Text style={{color: BRAND_GREEN, fontWeight: 'bold'}}>Sí, entrar</Text>
               </TouchableOpacity>
-            </div>
+            </View>
           </View>
         </View>
       </Modal>

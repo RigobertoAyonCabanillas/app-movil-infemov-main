@@ -1,205 +1,215 @@
-import React, { useState, useContext, useEffect, useRef } from 'react';
-import { 
-  View, StyleSheet, ScrollView, TouchableOpacity, 
-  ActivityIndicator, Alert, Dimensions, AppState 
-} from 'react-native';
-import { Text, Surface, IconButton } from 'react-native-paper';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import { UserContext } from '../../components/UserContext'; 
-import { crearSesionCheckout, verificarPagoStripe } from '@/services/api';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
-const COLORS = {
-  bg: '#000000',
-  cardBg: '#121212',
-  accent: '#39FF14',
-  textMain: '#FFFFFF',
-  textSub: '#A0A0A0',
-  price: '#FFD700',
-};
-
-const PAQUETES = [
-  { id: '1credito', nombre: '1 Crédito', desc: 'Válido por 30 días', precio: '$99', tipo: 'C' },
-  { id: '5clases', nombre: 'Paquete 5 Clases', desc: '5 Clases', precio: '$400', tipo: 'C' },
-  { id: '5creditos', nombre: '5 Créditos', desc: 'Válido por 60 días', precio: '$450', tipo: 'C' },
-  { id: '10creditos', nombre: '10 Créditos', desc: 'Válido por 90 días', precio: '$800', tipo: 'C' },
-  { id: '10clases_300', nombre: '10 Clases Promo', desc: '10 Clases', precio: '$300', tipo: 'C' },
-  { id: '10clases_100', nombre: '10 Clases Flash', desc: 'Oferta limitada', precio: '$100', tipo: 'C' },
-  { id: 'prueba_star', nombre: 'Prueba Star', desc: '20 Clases', precio: '$250', tipo: 'C' },
-  { id: 'extremo', nombre: 'Extremo', desc: '20 Clases', precio: '$450', tipo: 'C' },
-  { id: 'ultimate', nombre: 'Ultimate Pack', desc: '22 Clases', precio: '$500', tipo: 'C' },
-  { id: 'membresia_start', nombre: 'Membresía Start', desc: '7 días - Semanal', precio: '$200', tipo: 'M' },
-  { id: 'membresia_semanal', nombre: 'Membresía Semanal', desc: '7 días acceso', precio: '$250', tipo: 'M' },
-  { id: 'membresia_prueba', nombre: 'Membresía Prueba', desc: '14 días', precio: '$600', tipo: 'M' },
-  { id: 'membresia_pro', nombre: 'Membresía Pro', desc: '30 días - Mensual', precio: '$600', tipo: 'M' },
-  { id: 'membresia_mensual', nombre: 'Membresía Mensual', desc: '30 días acceso', precio: '$800', tipo: 'M' },
-  { id: 'membresia_prueba_celular', nombre: 'Prueba Celular', desc: '30 días', precio: '$800', tipo: 'M' },
-  { id: 'membresia_ultimate', nombre: 'Membresía Ultimate', desc: 'Anual - 365 días', precio: '$2,500', tipo: 'M' },
-  { id: 'membresia_legendaria', nombre: 'Legendaria', desc: 'Anual - 800 días', precio: '$12,000', tipo: 'M' },
+// Datos simulados de tarjetas
+const TARJETAS_MOCK = [
+  { id: '1', tipo: 'Visa', ultimos4: '4242', banco: 'BBVA', color: '#1a237e' },
+  { id: '2', tipo: 'Mastercard', ultimos4: '8810', banco: 'Santander', color: '#b71c1c' },
 ];
 
-export default function MetodosPagoScreen() {
-  const { users } = useContext(UserContext);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-  
-  const appState = useRef(AppState.currentState);
-  const sessionEnCurso = useRef<string | null>(null);
+export default function TiendaScreen() {
+  const [tarjetas, setTarjetas] = useState(TARJETAS_MOCK);
 
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      // Si el usuario vuelve a la app (por ejemplo, cerró el navegador manualmente)
-      if (
-        appState.current.match(/inactive|background/) && 
-        nextAppState === 'active' && 
-        sessionEnCurso.current
-      ) {
-        // Verificamos por si acaso el pago se completó pero el redirect falló
-        verificarConReintentos(sessionEnCurso.current!);
-      }
-      appState.current = nextAppState;
-    });
-
-    return () => subscription.remove();
-  }, []);
-
-  const verificarConReintentos = async (sessionId: string, intentos = 0) => {
-    setLoadingId('verificando');
-    try {
-      const res = await verificarPagoStripe(sessionId);
-      
-      if (res.pagado) {
-        Alert.alert("¡Éxito!", "Tu compra en Fixskale se ha procesado correctamente.");
-        sessionEnCurso.current = null;
-        setLoadingId(null);
-      } else if (intentos < 3) {
-        // Reintentamos brevemente si el webhook de Stripe aún está procesando
-        setTimeout(() => verificarConReintentos(sessionId, intentos + 1), 2500);
-      } else {
-        Alert.alert("Procesando", "Estamos confirmando tu pago. Tus créditos aparecerán en unos momentos.");
-        sessionEnCurso.current = null;
-        setLoadingId(null);
-      }
-    } catch (error) {
-      console.error("Error verificando pago:", error);
-      setLoadingId(null);
-      sessionEnCurso.current = null;
-    }
-  };
-
-  const iniciarFlujoPago = async (productoId: string) => {
-    setLoadingId(productoId);
-    try {
-      // Importante: El scheme debe ser 'fixskale-app' (con guion si así está en tu app.json)
-      // Esto genera fixskale-app://pagofinalizado
-      const redirectUrl = Linking.createURL('pagofinalizado', { scheme: 'fixskale-app' });
-
-      const data = await crearSesionCheckout(productoId, users.id, users.gymId, redirectUrl);
-      
-      if (data?.url && data?.sessionId) {
-        sessionEnCurso.current = data.sessionId;
-
-        // openAuthSessionAsync permite que la app reaccione cuando el navegador redirige al scheme
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-
-        if (result.type === 'success') {
-          // El navegador se cerró porque detectó el redirectUrl del backend
-          verificarConReintentos(data.sessionId);
-        } else {
-          // El usuario canceló o cerró el navegador manualmente
-          setLoadingId(null);
-          sessionEnCurso.current = null;
-        }
-      } else {
-        Alert.alert("Error", "No se pudo generar la sesión de pago.");
-        setLoadingId(null);
-      }
-    } catch (e) {
-      console.error("Error en flujo de pago:", e);
-      Alert.alert("Error", "Ocurrió un problema al conectar con el servidor de pagos.");
-      setLoadingId(null);
-    }
-  };
-
-  const renderItem = (pkg: typeof PAQUETES[0]) => (
-    <TouchableOpacity 
-      key={pkg.id} 
-      style={styles.card} 
-      onPress={() => iniciarFlujoPago(pkg.id)}
-      disabled={loadingId !== null}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={styles.pkgName}>{pkg.nombre}</Text>
-        <Text style={styles.pkgDesc}>{pkg.desc}</Text>
-        <Text style={styles.pkgPrice}>{pkg.precio} MXN</Text>
+  const renderTarjeta = ({ item }: { item: typeof TARJETAS_MOCK[0] }) => (
+    <View style={[styles.card, { backgroundColor: item.color }]}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardBank}>{item.banco}</Text>
+        <Ionicons name="card" size={30} color="white" />
       </View>
-      {loadingId === pkg.id ? (
-        <ActivityIndicator color={COLORS.accent} />
-      ) : (
-        <IconButton icon="cart-outline" iconColor={COLORS.accent} size={22} />
-      )}
-    </TouchableOpacity>
+      <Text style={styles.cardNumber}>**** **** **** {item.ultimos4}</Text>
+      <View style={styles.cardFooter}>
+        <View>
+          <Text style={styles.cardLabel}>TITULAR</Text>
+          <Text style={styles.cardHolder}>USUARIO EJEMPLO</Text>
+        </View>
+        <Text style={styles.cardType}>{item.tipo}</Text>
+      </View>
+    </View>
   );
 
   return (
-    <View style={styles.container}>
-      <Surface style={styles.header} elevation={4}>
-        <Text style={styles.headerTitle}>TIENDA</Text>
-        <Text style={styles.headerSub}>Adquiere tus accesos de forma segura</Text>
-      </Surface>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <Text style={styles.sectionTitle}>Métodos de Pago</Text>
+      
+      <FlatList
+        data={tarjetas}
+        renderItem={renderTarjeta}
+        keyExtractor={item => item.id}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.listContainer}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        snapToInterval={315} // Ancho de tarjeta + margen
+      />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.sectionTitle}>PAQUETES DE CRÉDITOS</Text>
-        {PAQUETES.filter(p => p.tipo === 'C').map(renderItem)}
+      <View style={styles.actionsContainer}>
+        <Text style={styles.subTitle}>Opciones de gestión</Text>
+        
+        <TouchableOpacity style={styles.addButton}>
+          <Ionicons name="add-circle-outline" size={24} color="#39FF14" />
+          <Text style={styles.addButtonText}>Agregar nueva tarjeta</Text>
+        </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { marginTop: 25 }]}>MEMBRESÍAS</Text>
-        {PAQUETES.filter(p => p.tipo === 'M').map(renderItem)}
-      </ScrollView>
+        <TouchableOpacity style={styles.optionRow}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="logo-paypal" size={20} color="#fff" />
+          </View>
+          <Text style={styles.optionText}>PayPal</Text>
+          <Ionicons name="chevron-forward" size={20} color="#555" />
+        </TouchableOpacity>
 
-      {loadingId === 'verificando' && (
-        <View style={styles.overlay}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.overlayText}>Sincronizando con el gimnasio...</Text>
-        </View>
-      )}
-    </View>
+        <TouchableOpacity style={styles.optionRow}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="cash-outline" size={20} color="#fff" />
+          </View>
+          <Text style={styles.optionText}>Pago en Efectivo (OXXO)</Text>
+          <Ionicons name="chevron-forward" size={20} color="#555" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoBox}>
+        <Ionicons name="shield-checkmark-outline" size={22} color="#39FF14" />
+        <Text style={styles.infoText}>
+          Tus datos bancarios están protegidos. Esta es una plataforma de pago segura.
+        </Text>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 25,
-    backgroundColor: COLORS.cardBg,
-    alignItems: 'center',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+  container: { 
+    flex: 1, 
+    backgroundColor: '#000', 
+    paddingHorizontal: 20 
   },
-  headerTitle: { fontSize: 26, fontWeight: 'bold', color: COLORS.accent, letterSpacing: 3 },
-  headerSub: { color: COLORS.textSub, fontSize: 12, marginTop: 4 },
-  scroll: { padding: 20 },
-  sectionTitle: { color: COLORS.accent, fontSize: 13, fontWeight: 'bold', marginBottom: 15, opacity: 0.8 },
+  sectionTitle: { 
+    color: '#fff', 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    marginBottom: 20, 
+    marginTop: 20 
+  },
+  subTitle: {
+    color: '#888',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 15
+  },
+  listContainer: { 
+    paddingBottom: 20 
+  },
   card: {
-    backgroundColor: COLORS.cardBg,
+    width: 300,
+    height: 180,
+    borderRadius: 20,
+    padding: 20,
+    marginRight: 15,
+    justifyContent: 'space-between',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  cardHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
+  },
+  cardBank: { 
+    color: '#fff', 
+    fontSize: 18, 
+    fontWeight: 'bold' 
+  },
+  cardNumber: { 
+    color: '#fff', 
+    fontSize: 20, 
+    letterSpacing: 3, 
+    textAlign: 'center', 
+    marginVertical: 10 
+  },
+  cardFooter: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between',
+    alignItems: 'flex-end'
+  },
+  cardLabel: {
+    color: '#fff',
+    fontSize: 10,
+    opacity: 0.6
+  },
+  cardHolder: { 
+    color: '#fff', 
+    fontSize: 14, 
+    fontWeight: '500'
+  },
+  cardType: { 
+    color: '#fff', 
+    fontWeight: 'bold',
+    fontSize: 16
+  },
+  actionsContainer: { 
+    marginTop: 30 
+  },
+  addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 18,
-    borderRadius: 15,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: '#333',
+    borderRadius: 15,
+    marginBottom: 20,
+    borderStyle: 'dashed',
+    justifyContent: 'center'
   },
-  pkgName: { color: COLORS.textMain, fontSize: 16, fontWeight: 'bold' },
-  pkgDesc: { color: COLORS.textSub, fontSize: 12, marginTop: 2 },
-  pkgPrice: { color: COLORS.price, fontSize: 19, fontWeight: 'bold', marginTop: 8 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center',
+  addButtonText: { 
+    color: '#39FF14', 
+    marginLeft: 10, 
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  optionRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 2000
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
   },
-  overlayText: { color: '#fff', marginTop: 15, fontWeight: '500' }
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  optionText: { 
+    color: '#fff', 
+    flex: 1, 
+    marginLeft: 15, 
+    fontSize: 16 
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: '#0a1a05',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1a3311'
+  },
+  infoText: { 
+    color: '#39FF14', 
+    fontSize: 12, 
+    marginLeft: 12, 
+    flex: 1,
+    opacity: 0.8
+  },
 });

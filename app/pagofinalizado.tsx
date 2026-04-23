@@ -9,7 +9,7 @@ export default function PagoFinalizado() {
 
   const irAMetodosPago = () => {
     // Al estar en la raíz, usamos la ruta completa para volver a settings
-    router.replace('/(settings)/metodospago');
+    router.replace('/(tabs)/tienda');
   };
 
   return (
@@ -30,7 +30,7 @@ export default function PagoFinalizado() {
         style={styles.button} 
         onPress={irAMetodosPago}
       >
-        <Text style={styles.buttonText}>Regresar a Métodos de Pago</Text>
+        <Text style={styles.buttonText}>Regresar a la Tienda</Text>
       </TouchableOpacity>
     </View>
   );
