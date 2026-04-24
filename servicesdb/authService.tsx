@@ -88,7 +88,7 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         gymId: respuestaApi.GimnasioActual || gymSelected,
         rol: rolUsuario, 
         estudiante: "",
-        fechaNacimiento: "",
+        fechaNacimiento: respuestaApi.FechaNacimiento || "",
         telefono: "", 
         deviceId: respuestaApi.DeviceId || "",
       });
@@ -170,17 +170,27 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
  // --- 4. Función para sincronizar la base de datos local Perfil---
 const sincronizarPerfil = async (userId: number, correo: string, tokenForzado?: string) => {
   try {
-    // 1. Pedir a la API 
-    // PASAMOS el token forzado si existe, para que la API sepa quién es el nuevo usuario
-    const datosApi = await obtenerDatosPerfil(tokenForzado); 
+    const datosApi = await obtenerDatosPerfil(tokenForzado);
+    console.log("🔑 Datos obtenidos de la API:", datosApi); 
 
     if (!datosApi) throw new Error("No se recibieron datos del servidor");
 
-    // 2. Determinar qué token guardar en SQLite
-    // Si venimos de un cambio de gym, usamos el forzado. Si no, el del storage.
+    // --- 🛠️ LIMPIEZA DE FECHA FORZADA ---
+    let fechaLimpia = datosApi.FechaNacimiento || "";
+    
+    if (fechaLimpia.includes('T')) {
+        // De "1997-12-01T00:00:00" a ["1997", "12", "01"]
+        const [y, m, d] = fechaLimpia.split('T')[0].split('-');
+        fechaLimpia = `${d}/${m}/${y}`;
+    } else if (fechaLimpia.includes('-')) {
+        // De "1997-12-01" a ["1997", "12", "01"]
+        const [y, m, d] = fechaLimpia.split('-');
+        fechaLimpia = `${d}/${m}/${y}`;
+    }
+    // ---------------------------------------
+
     const tokenAFuardar = tokenForzado || await AsyncStorage.getItem('token');
 
-    // 3. Guardar en SQLite
     const filasActualizadas = await drizzleDb
       .update(schema.usersdb)
       .set({
@@ -188,15 +198,14 @@ const sincronizarPerfil = async (userId: number, correo: string, tokenForzado?: 
         apellidoPaterno: datosApi.ApellidoPaterno || "",
         apellidoMaterno: datosApi.ApellidoMaterno || "",
         telefono: datosApi.Telefono || "",
+        fechaNacimiento: fechaLimpia, // 👈 Guardamos el formato DD/MM/YYYY
         correo: datosApi.Correo || correo,
         token: tokenAFuardar 
       })
       .where(eq(schema.usersdb.id, userId))
       .returning();
 
-    // 4. Actualizar Contexto
     if (filasActualizadas.length > 0) {
-        // Asegúrate de que el ID sea Number para evitar desajustes en el context
         setUsers({
             ...filasActualizadas[0],
             id: Number(filasActualizadas[0].id)
@@ -208,7 +217,6 @@ const sincronizarPerfil = async (userId: number, correo: string, tokenForzado?: 
   } catch (error) {
     console.error("❌ Error sincronización:", error);
     
-    // Si falla (por falta de red), recuperamos lo que ya hay en SQLite
     const dataLocal = await drizzleDb
       .select()
       .from(schema.usersdb)
@@ -385,6 +393,7 @@ const sincronizarActualizacionPerfil = async (userId: number, nuevosDatos: any) 
                 apellidoMaterno: nuevosDatos.ApellidoMaterno || "",
                 correo: nuevosDatos.Correo || "",
                 telefono: nuevosDatos.Telefono || "",
+                fechaNacimiento: nuevosDatos.FechaNacimiento || "", // 👈 Agregado para persistir la fecha
                 token: tokenFinal // 👈 Token renovado
             })
             .where(eq(schema.usersdb.id, userId))

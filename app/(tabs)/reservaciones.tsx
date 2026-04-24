@@ -44,6 +44,7 @@ const COLORS = {
   pasadoText: '#B0B0B0', 
   pasadoBorder: '#444444', 
   bloqueado: '#555555',
+  warning: '#FFD700', // Color para avisos
 };
 
 export default function ReservacionesScreen() {
@@ -106,7 +107,8 @@ export default function ReservacionesScreen() {
     try {
       const membresias = await obtenerMembresiasLocal(usuarioIdActual);
       const creditos = await obtenerCreditosLocal(usuarioIdActual);
-      const acceso = (membresias && membresias.length > 0) || (creditos && creditos.length > 0);
+      // Verificamos si tiene membresías activas (estatus 1) o créditos disponibles
+      const acceso = (membresias && membresias.some((m: any) => m.estatus === 1)) || (creditos && creditos.length > 0);
       setTieneAcceso(acceso);
 
       const datosLocales = await sincronizarClasesGimnasio(gimnasioId, usuarioIdActual);
@@ -240,10 +242,8 @@ export default function ReservacionesScreen() {
         <StatusBar barStyle="light-content" />
         
         <Portal>
-          {/* MODAL SELECCIÓN DE LUGAR */}
           <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
-            
             <ScrollView 
               ref={scrollLugaresRef}
               contentContainerStyle={styles.scrollLugaresContent} 
@@ -281,13 +281,11 @@ export default function ReservacionesScreen() {
                 return filas;
               })()}
             </ScrollView>
-
             <View style={styles.footerModal}>
               <Button onPress={() => setModalEquipoVisible(false)} textColor={COLORS.accent}>Cerrar</Button>
             </View>
           </Modal>
 
-          {/* MODAL GESTIÓN */}
           <Modal visible={modalGestionVisible} onDismiss={() => setModalGestionVisible(false)} contentContainerStyle={styles.modalGestion}>
               <Text style={styles.modalTitle}>MIS PRÓXIMAS CLASES</Text>
               <ScrollView style={{ maxHeight: 400 }}>
@@ -334,6 +332,26 @@ export default function ReservacionesScreen() {
           <ActivityIndicator style={{marginTop: 50}} color={COLORS.accent} size="large" />
         ) : (
           <ScrollView contentContainerStyle={styles.scrollContent}>
+            
+            {/* 🛡️ AVISO DE TIENDA SI NO TIENE ACCESO */}
+            {!tieneAcceso && (
+              <Surface style={styles.avisoTienda} elevation={2}>
+                <IconButton icon="store-alert" iconColor={COLORS.warning} size={24} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.avisoTitulo}>Sin membresía o creditos activos</Text>
+                  <Text style={styles.avisoDesc}>Para reservar una clase necesitas adquirir créditos o un plan en la tienda.</Text>
+                </View>
+                <Button 
+                  mode="text" 
+                  textColor={COLORS.accent} 
+                  onPress={() => navigation.navigate('tienda')} // Asegúrate que el nombre coincida con tu tab de tienda
+                  labelStyle={{ fontWeight: 'bold' }}
+                >
+                  IR A TIENDA
+                </Button>
+              </Surface>
+            )}
+
             {diasSemana.map((dia) => {
               const fechaID = dia.toISOString().split('T')[0];
               const clasesDelDia = clasesDisponibles.filter(c => (c.dia || "").substring(0, 10) === fechaID);
@@ -393,6 +411,16 @@ export default function ReservacionesScreen() {
                                       } else if (tieneAcceso) {
                                         setClaseSeleccionada(clase);
                                         estado.tipo === 'LIBRE' ? setModalEquipoVisible(true) : manejarInscripcionFinal(0);
+                                      } else {
+                                        // 🛡️ Alerta si intenta inscribirse sin acceso
+                                        Alert.alert(
+                                          "Acceso Restringido", 
+                                          "No cuentas con créditos o membresía activa para reservar.",
+                                          [
+                                            { text: "Cancelar", style: 'cancel' },
+                                            { text: "Ir a Tienda", onPress: () => navigation.navigate('tienda') }
+                                          ]
+                                        );
                                       }
                                   }}
                                   labelStyle={[styles.btnLabel, { color: '#000000' }]}
@@ -432,6 +460,20 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: COLORS.textMain, fontWeight: 'bold', fontSize: 18, letterSpacing: 3 },
   scrollContent: { padding: 15 },
+  // Estilos para el aviso de tienda
+  avisoTienda: { 
+    backgroundColor: '#1A1A1A', 
+    borderRadius: 12, 
+    padding: 10, 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#333'
+  },
+  avisoTitulo: { color: COLORS.warning, fontWeight: 'bold', fontSize: 14 },
+  avisoDesc: { color: COLORS.textSub, fontSize: 11, marginTop: 2 },
+
   accordion: { backgroundColor: COLORS.cardBg, marginBottom: 5, borderRadius: 8 },
   accordionTitle: { color: COLORS.textMain, textTransform: 'capitalize' },
   listItem: { backgroundColor: '#1e1e1e', marginBottom: 5, borderRadius: 5, borderLeftWidth: 4 },

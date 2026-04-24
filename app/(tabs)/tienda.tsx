@@ -46,23 +46,26 @@ export default function MetodosPagoScreen() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [tabActivo, setTabActivo] = useState<'C' | 'M'>('C');
   const [tieneMembresiaActiva, setTieneMembresiaActiva] = useState(false);
-  
+
   // Implementación del Hook de SQLite
   const { obtenerMembresiasLocal, actualizarBaseDatosLocalMembresia } = useAuthService();
   
   const appState = useRef(AppState.currentState);
   const sessionEnCurso = useRef<string | null>(null);
 
-  // 1. Efecto inicial para cargar estado desde SQLite
+  // 🛡️ 1. Validación temprana: Si no hay usuario, no intentamos hacer nada más.
+  // Esto evita errores al cerrar sesión mientras la pantalla sigue montada.
   useEffect(() => {
-    checkMembresiaLocal();
-  }, [users.id]);
+    if (users?.id) {
+      checkMembresiaLocal();
+    }
+  }, [users?.id]);
 
   const checkMembresiaLocal = async () => {
-    if (!users.id) return;
+    // Usamos optional chaining para mayor seguridad
+    if (!users?.id) return; 
     try {
       const locales = await obtenerMembresiasLocal(users.id);
-      // Validamos si algún registro tiene estatus 1 (Activo)
       const activa = locales.some((m: any) => m.estatus === 1);
       setTieneMembresiaActiva(activa);
     } catch (e) {
@@ -81,14 +84,14 @@ export default function MetodosPagoScreen() {
   }, []);
 
   const verificarConReintentos = async (sessionId: string, intentos = 0) => {
+    // Seguridad extra en caso de que users sea null durante una verificación activa
+    if (!users?.id || !users?.gymId) return;
+
     setLoadingId('verificando');
     try {
       const res = await verificarPagoStripe(sessionId);
       if (res.pagado) {
-        // --- SINCRONIZACIÓN POST-PAGO ---
-        // 1. Forzamos la actualización de la API a SQLite
         await actualizarBaseDatosLocalMembresia(users.id, users.gymId);
-        // 2. Refrescamos el estado visual
         await checkMembresiaLocal();
         
         Alert.alert("¡Listo!", "Tu compra se ha procesado correctamente.");
@@ -107,6 +110,11 @@ export default function MetodosPagoScreen() {
   };
 
   const iniciarFlujoPago = async (productoId: string) => {
+    if (!users?.id || !users?.gymId) {
+      Alert.alert("Error", "No se detectó una sesión activa.");
+      return;
+    }
+
     setLoadingId(productoId);
     try {
       const redirectUrl = Linking.createURL('pagofinalizado', { scheme: 'fixskale-app' });
@@ -131,6 +139,15 @@ export default function MetodosPagoScreen() {
       setLoadingId(null);
     }
   };
+
+  // 🛡️ Si users es null por el cierre de sesión, mostramos un loader mientras la navegación nos saca
+  if (!users) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center' }]}>
+        <ActivityIndicator color={COLORS.accent} />
+      </View>
+    );
+  }
 
   const renderItem = (pkg: typeof PAQUETES[0]) => {
     const estaBloqueado = pkg.tipo === 'M' && tieneMembresiaActiva;

@@ -67,6 +67,12 @@ export default function Login() {
     checarAutoLogin();
   }, []);
 
+  // Función para permitir SOLO números en el input de folio
+  const handleFolioChange = (text: string) => {
+    const soloNumeros = text.replace(/[^0-9]/g, '');
+    setFolio(soloNumeros);
+  };
+
   const handleLogin = async () => {
     const email = emailRef.current;
     const password = passwordRef.current;
@@ -110,7 +116,6 @@ export default function Login() {
       return;
     }
 
-    // Mejora iOS: Cerramos el teclado antes de cualquier acción para que no se quede pegado
     Keyboard.dismiss();
     setCargandoFolio(true);
 
@@ -122,7 +127,20 @@ export default function Login() {
         setShowConfirmModal(true); 
       }
     } catch (error) {
-      Alert.alert("Error de Validación", "El folio ingresado no es válido o no existe.");
+      const errorMsg = error instanceof Error ? error.message : "";
+      
+      // Diferenciamos si el error es de conexión o de datos
+      if (errorMsg.includes("Network") || errorMsg.includes("fetch")) {
+        Alert.alert(
+          "Sin conexión", 
+          "No se pudo establecer conexión con el servidor. Revisa tu internet."
+        );
+      } else {
+        Alert.alert(
+          "Folio no encontrado", 
+          "El folio ingresado no es válido o no existe en nuestro sistema."
+        );
+      }
     } finally {
       setCargandoFolio(false);
     }
@@ -149,7 +167,6 @@ export default function Login() {
           keyboardShouldPersistTaps="handled" 
           bounces={false}
         >
-          {/* Mejora UX: Al tocar el fondo negro se cierra el teclado */}
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.contentWrapper}>
               <View style={styles.neonPanel}>
@@ -163,7 +180,7 @@ export default function Login() {
                         placeholder="Folio de Acceso"
                         placeholderTextColor="#444" 
                         value={folio}
-                        onChangeText={setFolio}
+                        onChangeText={handleFolioChange} // Aplicando restricción numérica
                         keyboardType="numeric" 
                         returnKeyType="done"
                       />

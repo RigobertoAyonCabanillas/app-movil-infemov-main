@@ -8,6 +8,7 @@ import CountryPicker, { FlagType, getAllCountries } from 'react-native-country-p
 import MaskInput from 'react-native-mask-input';
 import { Button, Dialog, Divider, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const COLORS = {
     bg: '#000000',
@@ -24,15 +25,20 @@ const COLORS = {
 const CuentaScreen = () => {
     const { users, setUsers } = useContext(UserContext);
     const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword } = useAuthService();
+    console.log("datos perfil", users);
 
     const [nombre, setNombre] = useState('');
     const [apellidoP, setApellidoP] = useState('');
     const [apellidoM, setApellidoM] = useState('');
     const [correo, setCorreo] = useState('');
     
+    // --- LÓGICA DE FECHA ---
+    const [date, setDate] = useState(new Date(2000, 0, 1));
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [fechaTexto, setFechaTexto] = useState("Selecciona tu fecha");
+
     const [telefono, setTelefono] = useState('');
     const [telefonoLimpio, setTelefonoLimpio] = useState('');
-    // Eliminamos 'MX' por defecto para que sea dinámico
     const [countryCode, setCountryCode] = useState<any>(''); 
     const [callingCode, setCallingCode] = useState('');
     const [showCountryPicker, setShowCountryPicker] = useState(false);
@@ -49,21 +55,24 @@ const CuentaScreen = () => {
     const [gymSeleccionadoId, setGymSeleccionadoId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
 
+    // Memorizar cambios para habilitar/deshabilitar botón
     const hayCambios = useMemo(() => {
         if (!users) return false;
         const telDb = users.telefono || users.Telefono || "";
         const soloNumerosDb = telDb.replace(/\D/g, '');
         const diezDigitosDb = soloNumerosDb.slice(-10);
         const ladaDb = soloNumerosDb.slice(0, soloNumerosDb.length - 10) || "52";
+        const fechaDb = users.fechaNacimiento || users.FechaNacimiento || "";
 
         return (
             nombre !== (users.nombres || users.Nombre || "") ||
             apellidoP !== (users.apellidoPaterno || users.ApellidoPaterno || "") ||
             apellidoM !== (users.apellidoMaterno || users.ApellidoMaterno || "") ||
             telefonoLimpio !== diezDigitosDb ||
-            callingCode !== ladaDb
+            callingCode !== ladaDb ||
+            fechaTexto !== fechaDb
         );
-    }, [nombre, apellidoP, apellidoM, telefonoLimpio, callingCode, users]);
+    }, [nombre, apellidoP, apellidoM, telefonoLimpio, callingCode, fechaTexto, users]);
 
     useEffect(() => {
         if (users) {
@@ -81,22 +90,28 @@ const CuentaScreen = () => {
             setTelefono(diezDigitos); 
             setCallingCode(ladaDb);
 
-            // FUNCIÓN MEJORADA: Busca el país y actualiza el countryCode inmediatamente
+            // CARGAR FECHA INICIAL MEJORADO
+            const fNac = users.fechaNacimiento || users.FechaNacimiento || "";
+            if (fNac) {
+                setFechaTexto(fNac);
+                try {
+                    if (fNac.includes('/')) {
+                        const [d, m, y] = fNac.split('/');
+                        setDate(new Date(parseInt(y), parseInt(m) - 1, parseInt(d)));
+                    } else if (fNac.includes('-')) {
+                        const [y, m, d] = fNac.split('-');
+                        setDate(new Date(parseInt(y), parseInt(m) - 1, parseInt(d)));
+                    }
+                } catch (e) { console.log("Error parse fecha:", e); }
+            }
+
             const inicializarBandera = async () => {
                 try {
                     const countries = await getAllCountries(FlagType.FLAT);
-                    const countryMatch = countries.find(c => 
-                        c.callingCode.some(code => code === ladaDb)
-                    );
-                    if (countryMatch) {
-                        setCountryCode(countryMatch.cca2);
-                    } else {
-                        // Fallback a México si no encuentra nada
-                        setCountryCode('MX');
-                    }
+                    const countryMatch = countries.find(c => c.callingCode.some(code => code === ladaDb));
+                    setCountryCode(countryMatch ? countryMatch.cca2 : 'MX');
                 } catch (e) {
                     setCountryCode('MX');
-                    console.error("Error al inicializar bandera", e);
                 }
             };
             inicializarBandera();
@@ -110,6 +125,18 @@ const CuentaScreen = () => {
             cargarSucursales();
         }
     }, [users]);
+
+    const onDateChange = (event: any, selectedDate?: Date) => {
+        setShowDatePicker(false);
+        if (event.type === 'set' && selectedDate) {
+            const currentDate = selectedDate;
+            setDate(currentDate);
+            let f = currentDate.getDate().toString().padStart(2, '0') + '/' + 
+                    (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
+                    currentDate.getFullYear();
+            setFechaTexto(f);
+        }
+    };
 
     const nombreGymActual = useMemo(() => {
         const idActual = users?.GimnasioActual || users?.gymId || users?.IdGym;
@@ -134,11 +161,18 @@ const CuentaScreen = () => {
                 ApellidoPaterno: apellidoP,
                 ApellidoMaterno: apellidoM,
                 Correo: correo,
-                Telefono: `+${callingCode}${telefonoLimpio}` 
+                Telefono: `+${callingCode}${telefonoLimpio}`,
+                fechaNacimiento: fechaTexto // Minúscula para consistencia
             };
             const res = await sincronizarActualizacionPerfil(users.id || users.Id, nuevosDatos);
             if (res.success) {
-                setUsers((prev: any) => ({ ...prev, ...nuevosDatos, nombres: nombre }));
+                // Actualizar contexto local para que useEffect no resetee nada
+                setUsers((prev: any) => ({ 
+                    ...prev, 
+                    ...nuevosDatos, 
+                    nombres: nombre,
+                    fechaNacimiento: fechaTexto 
+                }));
                 Alert.alert("Éxito", "Perfil actualizado.");
                 setExpanded(false);
             }
@@ -213,6 +247,11 @@ const CuentaScreen = () => {
                         <TextInput label="Apellido Paterno" value={apellidoP} onChangeText={setApellidoP} mode="outlined" style={styles.input} outlineColor={COLORS.divider} activeOutlineColor={COLORS.brandPink} textColor={COLORS.textMain} />
                         <TextInput label="Apellido Materno" value={apellidoM} onChangeText={setApellidoM} mode="outlined" style={styles.input} outlineColor={COLORS.divider} activeOutlineColor={COLORS.brandPink} textColor={COLORS.textMain} />
                         
+                        <Text style={styles.phoneLabel}>Fecha de Nacimiento</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateBtn}>
+                            <Text style={{ color: '#fff' }}>{fechaTexto}</Text>
+                        </TouchableOpacity>
+
                         <Text style={styles.phoneLabel}>Número de Teléfono</Text>
                         <View style={styles.phoneContainer}>
                             <TouchableOpacity onPress={() => setShowCountryPicker(true)} style={styles.countryBtn}>
@@ -236,37 +275,6 @@ const CuentaScreen = () => {
                                 placeholderTextColor="#444"
                             />
                         </View>
-
-                        <Modal
-                            visible={showCountryPicker}
-                            animationType="slide"
-                            transparent={false}
-                            onRequestClose={() => setShowCountryPicker(false)}
-                        >
-                            <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-                                <View style={styles.modalHeaderCustom}>
-                                    <Text style={styles.modalHeaderTitle}>Selecciona tu país</Text>
-                                </View>
-                                <CountryPicker
-                                    countryCode={countryCode || 'MX'}
-                                    visible={showCountryPicker}
-                                    onSelect={(c) => { 
-                                        setCountryCode(c.cca2); 
-                                        setCallingCode(c.callingCode[0]); 
-                                        setShowCountryPicker(false); 
-                                    }}
-                                    onClose={() => setShowCountryPicker(false)}
-                                    withFilter withFlag withEmoji withAlphaFilter withCallingCode
-                                    withModal={false} 
-                                    theme={{ 
-                                        backgroundColor: COLORS.bg, 
-                                        onBackgroundTextColor: COLORS.textMain, 
-                                        fontSize: 16,
-                                        filterPlaceholderTextColor: COLORS.textSub,
-                                    }}
-                                />
-                            </SafeAreaView>
-                        </Modal>
 
                         <Button 
                             mode="contained" 
@@ -306,6 +314,16 @@ const CuentaScreen = () => {
                     right={props => <List.Icon {...props} icon="chevron-right" color={COLORS.divider} />}
                 />
             </View>
+
+            {showDatePicker && (
+                <DateTimePicker 
+                    value={date} 
+                    mode="date" 
+                    display="spinner" 
+                    maximumDate={new Date()} 
+                    onChange={onDateChange} 
+                />
+            )}
 
             <Portal>
                 <Dialog visible={modalVisible} onDismiss={() => setModalVisible(false)} style={{ backgroundColor: COLORS.cardBg }}>
@@ -353,6 +371,32 @@ const CuentaScreen = () => {
                     </View>
                 </View>
             </Modal>
+
+            <Modal visible={showCountryPicker} animationType="slide" transparent={false}>
+                <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
+                    <View style={styles.modalHeaderCustom}>
+                        <Text style={styles.modalHeaderTitle}>Selecciona tu país</Text>
+                    </View>
+                    <CountryPicker
+                        countryCode={countryCode || 'MX'}
+                        visible={showCountryPicker}
+                        onSelect={(c) => { 
+                            setCountryCode(c.cca2); 
+                            setCallingCode(c.callingCode[0]); 
+                            setShowCountryPicker(false); 
+                        }}
+                        onClose={() => setShowCountryPicker(false)}
+                        withFilter withFlag withEmoji withAlphaFilter withCallingCode
+                        withModal={false} 
+                        theme={{ 
+                            backgroundColor: COLORS.bg, 
+                            onBackgroundTextColor: COLORS.textMain, 
+                            fontSize: 16,
+                            filterPlaceholderTextColor: COLORS.textSub,
+                        }}
+                    />
+                </SafeAreaView>
+            </Modal>
         </ScrollView>
     );
 };
@@ -368,6 +412,7 @@ const styles = StyleSheet.create({
     input: { marginBottom: 10, backgroundColor: COLORS.inputBg },
     mainBtn: { marginTop: 20, borderRadius: 8 },
     phoneLabel: { color: COLORS.brandPink, fontSize: 12, marginBottom: 6, marginLeft: 4, fontWeight: '600' },
+    dateBtn: { height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: COLORS.pinkFade, justifyContent: 'center', paddingHorizontal: 15, marginBottom: 10 },
     phoneContainer: { flexDirection: 'row', height: 50, backgroundColor: '#000', borderRadius: 12, borderWidth: 1, borderColor: COLORS.pinkFade, overflow: 'hidden', marginBottom: 10 },
     countryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: '#111', borderRightWidth: 1, borderRightColor: COLORS.pinkFade },
     flag: { width: 25, height: 18, marginRight: 8, borderRadius: 2 },
@@ -383,4 +428,4 @@ const styles = StyleSheet.create({
     modalHeaderTitle: { color: COLORS.textMain, fontSize: 18, fontWeight: 'bold' }
 });
 
-export default CuentaScreen;
+export default CuentaScreen;    
