@@ -3,7 +3,7 @@ import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
 import { useAuthService } from "@/servicesdb/authService";
 import { router } from "expo-router";
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, Platform } from 'react-native';
 import CountryPicker, { FlagType, getAllCountries } from 'react-native-country-picker-modal';
 import MaskInput from 'react-native-mask-input';
 import { Button, Dialog, Divider, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
@@ -25,7 +25,6 @@ const COLORS = {
 const CuentaScreen = () => {
     const { users, setUsers } = useContext(UserContext);
     const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword } = useAuthService();
-    console.log("datos perfil", users);
 
     const [nombre, setNombre] = useState('');
     const [apellidoP, setApellidoP] = useState('');
@@ -55,7 +54,6 @@ const CuentaScreen = () => {
     const [gymSeleccionadoId, setGymSeleccionadoId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // Memorizar cambios para habilitar/deshabilitar botón
     const hayCambios = useMemo(() => {
         if (!users) return false;
         const telDb = users.telefono || users.Telefono || "";
@@ -90,7 +88,6 @@ const CuentaScreen = () => {
             setTelefono(diezDigitos); 
             setCallingCode(ladaDb);
 
-            // CARGAR FECHA INICIAL MEJORADO
             const fNac = users.fechaNacimiento || users.FechaNacimiento || "";
             if (fNac) {
                 setFechaTexto(fNac);
@@ -110,9 +107,7 @@ const CuentaScreen = () => {
                     const countries = await getAllCountries(FlagType.FLAT);
                     const countryMatch = countries.find(c => c.callingCode.some(code => code === ladaDb));
                     setCountryCode(countryMatch ? countryMatch.cca2 : 'MX');
-                } catch (e) {
-                    setCountryCode('MX');
-                }
+                } catch (e) { setCountryCode('MX'); }
             };
             inicializarBandera();
 
@@ -127,7 +122,9 @@ const CuentaScreen = () => {
     }, [users]);
 
     const onDateChange = (event: any, selectedDate?: Date) => {
-        setShowDatePicker(false);
+        // En Android cerramos el picker inmediatamente
+        if (Platform.OS === 'android') setShowDatePicker(false);
+        
         if (event.type === 'set' && selectedDate) {
             const currentDate = selectedDate;
             setDate(currentDate);
@@ -135,6 +132,8 @@ const CuentaScreen = () => {
                     (currentDate.getMonth() + 1).toString().padStart(2, '0') + '/' + 
                     currentDate.getFullYear();
             setFechaTexto(f);
+        } else if (event.type === 'dismissed') {
+            setShowDatePicker(false);
         }
     };
 
@@ -162,11 +161,10 @@ const CuentaScreen = () => {
                 ApellidoMaterno: apellidoM,
                 Correo: correo,
                 Telefono: `+${callingCode}${telefonoLimpio}`,
-                fechaNacimiento: fechaTexto // Minúscula para consistencia
+                fechaNacimiento: fechaTexto 
             };
             const res = await sincronizarActualizacionPerfil(users.id || users.Id, nuevosDatos);
             if (res.success) {
-                // Actualizar contexto local para que useEffect no resetee nada
                 setUsers((prev: any) => ({ 
                     ...prev, 
                     ...nuevosDatos, 
@@ -182,15 +180,29 @@ const CuentaScreen = () => {
     };
 
     const handleConfirmarCambioPass = async () => {
+        // 1. Validar que no estén vacíos
+        if (!oldPassword.trim() || !newPassword.trim()) {
+            Alert.alert("Campos requeridos", "Por favor, completa ambos campos de contraseña.");
+            return;
+        }
+
+        // 2. Validar complejidad PRIMERO
+        // Esto evita que salga el mensaje de "son iguales" si ni siquiera es una contraseña válida
+        const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        if (!complejidadRegex.test(newPassword)) {
+            Alert.alert(
+                "Seguridad insuficiente", 
+                "La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número."
+            );
+            return;
+        }
+
+        // 3. Validar que sean diferentes SOLO si la nueva ya es válida
         if (oldPassword === newPassword) {
             Alert.alert("Atención", "La nueva contraseña debe ser diferente a la actual.");
             return;
         }
-        const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-        if (!complejidadRegex.test(newPassword)) {
-            Alert.alert("Seguridad", "La contraseña debe tener 8+ caracteres, mayúscula, minúscula y número.");
-            return;
-        }
+
         setLoading(true);
         try {
             const res = await actualizarPasswordApi(oldPassword, newPassword, users.token || users.Token);
@@ -202,7 +214,9 @@ const CuentaScreen = () => {
             }
         } catch (error: any) {
             Alert.alert("Error", error.message || "Error al cambiar contraseña.");
-        } finally { setLoading(false); }
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     const handleCambiarGym = async (gymId: number, password: string) => {
@@ -315,14 +329,42 @@ const CuentaScreen = () => {
                 />
             </View>
 
+            {/* --- MODAL PARA FECHA (CENTRA EN IOS) --- */}
             {showDatePicker && (
-                <DateTimePicker 
-                    value={date} 
-                    mode="date" 
-                    display="spinner" 
-                    maximumDate={new Date()} 
-                    onChange={onDateChange} 
-                />
+                Platform.OS === 'ios' ? (
+                    <Modal transparent={true} animationType="fade">
+                        <View style={styles.iosModalWrapper}>
+                            <View style={styles.iosPickerContainer}>
+                                <Text style={styles.modalTitle}>Selecciona tu fecha</Text>
+                                <DateTimePicker 
+                                    value={date} 
+                                    mode="date" 
+                                    display="spinner" 
+                                    maximumDate={new Date()} 
+                                    onChange={onDateChange} 
+                                    textColor="#FFFFFF"
+                                />
+                                <Button 
+                                    mode="contained" 
+                                    onPress={() => setShowDatePicker(false)} 
+                                    buttonColor={COLORS.brandPink}
+                                    textColor="#000"
+                                    style={{ marginTop: 20, width: '100%' }}
+                                >
+                                    Confirmar
+                                </Button>
+                            </View>
+                        </View>
+                    </Modal>
+                ) : (
+                    <DateTimePicker 
+                        value={date} 
+                        mode="date" 
+                        display="spinner" 
+                        maximumDate={new Date()} 
+                        onChange={onDateChange} 
+                    />
+                )
             )}
 
             <Portal>
@@ -395,6 +437,7 @@ const CuentaScreen = () => {
                             filterPlaceholderTextColor: COLORS.textSub,
                         }}
                     />
+                    <Button onPress={() => setShowCountryPicker(false)} textColor={COLORS.brandPink}>Cerrar</Button>
                 </SafeAreaView>
             </Modal>
         </ScrollView>
@@ -425,7 +468,24 @@ const styles = StyleSheet.create({
     gymItem: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.divider, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
     passConfirmBox: { padding: 15, backgroundColor: '#111', borderRadius: 12, marginVertical: 10, borderWidth: 1, borderColor: '#333' },
     modalHeaderCustom: { padding: 15, borderBottomWidth: 1, borderBottomColor: COLORS.divider, backgroundColor: COLORS.bg, alignItems: 'center' },
-    modalHeaderTitle: { color: COLORS.textMain, fontSize: 18, fontWeight: 'bold' }
+    modalHeaderTitle: { color: COLORS.textMain, fontSize: 18, fontWeight: 'bold' },
+    
+    // ESTILOS ESPECIALES PARA IOS DATE PICKER
+    iosModalWrapper: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.8)',
+    },
+    iosPickerContainer: {
+        backgroundColor: COLORS.cardBg,
+        borderRadius: 25,
+        padding: 20,
+        width: '90%',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.divider,
+    }
 });
 
-export default CuentaScreen;    
+export default CuentaScreen; 

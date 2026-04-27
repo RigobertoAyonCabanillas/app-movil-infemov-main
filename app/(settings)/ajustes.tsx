@@ -48,14 +48,26 @@ export default function AjustesScreen() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    try {
-      await cerrarSesionProceso();
-      router.replace("/");
-    } catch (error) {
-      if (setUsers) setUsers(null);
-      router.replace("/");
+  try {
+    // 1. Limpieza física total
+    await cerrarSesionProceso(); 
+    
+    // 2. Limpiamos el estado global (Esto activa el RootNavigation)
+    if (setUsers) setUsers(null); 
+
+    // 3. Limpiamos TODO el historial acumulado de Expo Router
+    if (router.canDismiss()) {
+      router.dismissAll();
     }
-  };
+    
+    // 4. Redirigimos al Login
+    router.replace("/");
+    
+  } catch (error) {
+    if (setUsers) setUsers(null);
+    router.replace("/");
+  }
+};
 
   return (
     <View style={styles.container}>

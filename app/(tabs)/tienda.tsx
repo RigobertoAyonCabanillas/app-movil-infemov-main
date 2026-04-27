@@ -1,14 +1,20 @@
-import React, { useState, useContext, useEffect, useRef } from 'react';
-import { 
-  View, StyleSheet, ScrollView, TouchableOpacity, 
-  ActivityIndicator, Alert, Dimensions, AppState 
-} from 'react-native';
-import { Text, Surface, IconButton } from 'react-native-paper';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
-import { UserContext } from '../../components/UserContext'; 
 import { crearSesionCheckout, verificarPagoStripe } from '@/services/api';
-import { useAuthService } from '@/servicesdb/authService'; 
+import { useAuthService } from '@/servicesdb/authService';
+import * as Linking from 'expo-linking';
+import { useLocalSearchParams } from "expo-router";
+import * as WebBrowser from 'expo-web-browser';
+import React, { useContext, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator, Alert,
+  AppState,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { IconButton, Surface, Text } from 'react-native-paper';
+import { UserContext } from '../../components/UserContext';
 
 const { width } = Dimensions.get('window');
 
@@ -43,6 +49,9 @@ const PAQUETES = [
 
 export default function MetodosPagoScreen() {
   const { users } = useContext(UserContext);
+  const { tipo } = useLocalSearchParams(); // Capturamos el parámetro 'tipo'
+
+  
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [tabActivo, setTabActivo] = useState<'C' | 'M'>('C');
   const [tieneMembresiaActiva, setTieneMembresiaActiva] = useState(false);
@@ -60,6 +69,13 @@ export default function MetodosPagoScreen() {
       checkMembresiaLocal();
     }
   }, [users?.id]);
+
+  //Para redirigir a membresias o creditos
+  useEffect(() => {
+    if (tipo === 'C' || tipo === 'M') {
+        setTabActivo(tipo);
+    }
+}, [tipo]);
 
   const checkMembresiaLocal = async () => {
     // Usamos optional chaining para mayor seguridad

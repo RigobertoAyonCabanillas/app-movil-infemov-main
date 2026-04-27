@@ -1,15 +1,20 @@
-import React, { useContext, useState, useRef } from 'react';
-import { 
-    View, StyleSheet, ScrollView, Alert, 
-    KeyboardAvoidingView, Platform 
-} from 'react-native';
-import { 
-    Text, TextInput, Button, Surface, 
-    HelperText, IconButton 
-} from 'react-native-paper';
+import { UserContext } from '@/components/UserContext';
 import { useAuthService } from "@/servicesdb/authService";
 import { useRouter } from 'expo-router';
-import { UserContext } from '@/components/UserContext';
+import React, { useContext, useState } from 'react';
+import {
+    Alert,
+    KeyboardAvoidingView, Platform,
+    ScrollView,
+    StyleSheet,
+    View
+} from 'react-native';
+import {
+    Button,
+    HelperText, IconButton,
+    Surface,
+    Text, TextInput
+} from 'react-native-paper';
 
 const COLORS = {
     bg: '#121212',
@@ -48,9 +53,15 @@ export default function SugerenciasScreen() {
         setLoading(true);
         try {
             const res = await enviarSugerenciaService(comentario, calificacion, gymId);
-            Alert.alert("¡Gracias!", res.Message || "Recibimos tu opinión.");
+            
+            // MENSAJE ACTUALIZADO:
+            Alert.alert(
+                "¡Muchas gracias!", 
+                "Hemos recibido tus comentarios. Gracias por colaborar con nosotros para nuestra mejora constante; tu opinión es fundamental.",
+                [{ text: "OK", onPress: () => router.back() }]
+            );
+
             setComentario('');
-            router.back();
         } catch (error: any) {
             Alert.alert("Error", error.message || "No se pudo enviar la sugerencia.");
         } finally {

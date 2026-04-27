@@ -317,7 +317,10 @@ export default function Creditos() {
                                 buttonColor={BRAND_PINK} 
                                 textColor="#000"
                                 labelStyle={{ fontWeight: '900' }}
-                                onPress={() => router.push("/tienda")}
+                                onPress={() => router.push({
+                                    pathname: "/tienda",
+                                    params: { tipo: index === 0 ? 'C' : 'M' } // Envía 'C' para créditos o 'M' para membresías
+                                })} 
                                 style={{ marginTop: 25, borderRadius: 10 }}
                             >
                                 IR A LA TIENDA

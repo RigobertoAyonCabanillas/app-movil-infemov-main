@@ -1,8 +1,8 @@
 import { Stack } from 'expo-router';
-import { Suspense, useEffect, useState, useRef } from 'react';
+import { Suspense, useEffect, useState, useRef, useContext } from 'react';
 import { ActivityIndicator, View, StyleSheet, Animated, Easing } from 'react-native';
 import { SQLiteProvider, useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
-import { UserProvider } from "../components/UserContext";
+import { UserProvider, UserContext } from "../components/UserContext";
 import { PaperProvider } from 'react-native-paper';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
@@ -20,6 +20,29 @@ async function initializeDatabase(db: SQLiteDatabase) {
   } catch (error) { console.error(error); throw error; }
 }
 
+/**
+ * 🛡️ RootNavigation: Controla dinámicamente el árbol de rutas.
+ * Si users es null, las rutas de (tabs) y (settings) NO EXISTEN.
+ * Esto limpia el historial y evita el retroceso tras el logout.
+ */
+function RootNavigation() {
+  const { users } = useContext(UserContext);
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {!users ? (
+        // Al estar solo esta pantalla, el historial se reduce a 1 solo elemento
+        <Stack.Screen name="index" options={{ gestureEnabled: false }} />
+      ) : (
+        <>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(settings)" />
+        </>
+      )}
+    </Stack>
+  );
+}
+
 function AppContent() {
   const db = useSQLiteContext();
   const drizzleDb = drizzle(db);
@@ -30,9 +53,8 @@ function AppContent() {
   const fadePoweredBy = useRef(new Animated.Value(1)).current;
   const fadeLogoGrande = useRef(new Animated.Value(0)).current;
 
-  // EFECTO 1: Arranca el movimiento apenas el JS carga
+  // Animación de respiración inicial
   useEffect(() => {
-    // Iniciamos la animación de inmediato
     const breath = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -51,7 +73,6 @@ function AppContent() {
     );
     breath.start();
 
-    // Ocultamos la splash nativa lo más rápido posible
     const hideSplash = async () => {
       await SplashScreen.hideAsync();
     };
@@ -60,11 +81,10 @@ function AppContent() {
     return () => breath.stop();
   }, []);
 
-  // EFECTO 2: Maneja la lógica de la base de datos y cambio de fase
+  // Transición de Splash Screen personalizada
   useEffect(() => {
     if (success) {
       const transition = async () => {
-        // Esperamos 2 segundos para que se vea el logo animado
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         Animated.timing(fadePoweredBy, {
@@ -87,6 +107,7 @@ function AppContent() {
     }
   }, [success]);
 
+  // Pantallas de Carga (Fase 1 y 2)
   if (!success || phase < 3) {
     return (
       <View style={styles.container}>
@@ -116,16 +137,11 @@ function AppContent() {
     );
   }
 
+  // Contenido Principal (Fase 3)
   return (
-    <UserProvider>
-      <PaperProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(settings)" />
-        </Stack>
-      </PaperProvider>
-    </UserProvider>
+    <PaperProvider>
+      <RootNavigation />
+    </PaperProvider>
   );
 }
 
@@ -133,7 +149,12 @@ export default function Layout() {
   return (
     <Suspense fallback={<View style={styles.container}><ActivityIndicator color="#39FF14" /></View>}>
       <SQLiteProvider databaseName={BaseDatos} onInit={initializeDatabase} useSuspense>
-        <AppContent />
+        {/* IMPORTANTE: UserProvider debe envolver a AppContent para que 
+          RootNavigation pueda acceder al contexto correctamente.
+        */}
+        <UserProvider>
+          <AppContent />
+        </UserProvider>
       </SQLiteProvider>
     </Suspense>
   );
