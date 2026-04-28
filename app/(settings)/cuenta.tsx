@@ -3,7 +3,7 @@ import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
 import { useAuthService } from "@/servicesdb/authService";
 import { router } from "expo-router";
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, Platform } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, Platform, TouchableWithoutFeedback } from 'react-native';
 import CountryPicker, { FlagType, getAllCountries } from 'react-native-country-picker-modal';
 import MaskInput from 'react-native-mask-input';
 import { Button, Dialog, Divider, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
@@ -330,42 +330,59 @@ const CuentaScreen = () => {
             </View>
 
             {/* --- MODAL PARA FECHA (CENTRA EN IOS) --- */}
-            {showDatePicker && (
-                Platform.OS === 'ios' ? (
-                    <Modal transparent={true} animationType="fade">
-                        <View style={styles.iosModalWrapper}>
-                            <View style={styles.iosPickerContainer}>
-                                <Text style={styles.modalTitle}>Selecciona tu fecha</Text>
-                                <DateTimePicker 
-                                    value={date} 
-                                    mode="date" 
-                                    display="spinner" 
-                                    maximumDate={new Date()} 
-                                    onChange={onDateChange} 
-                                    textColor="#FFFFFF"
-                                />
-                                <Button 
-                                    mode="contained" 
-                                    onPress={() => setShowDatePicker(false)} 
-                                    buttonColor={COLORS.brandPink}
-                                    textColor="#000"
-                                    style={{ marginTop: 20, width: '100%' }}
-                                >
-                                    Confirmar
-                                </Button>
-                            </View>
-                        </View>
-                    </Modal>
-                ) : (
-                    <DateTimePicker 
-                        value={date} 
-                        mode="date" 
-                        display="spinner" 
-                        maximumDate={new Date()} 
-                        onChange={onDateChange} 
-                    />
-                )
-            )}
+                {showDatePicker && (
+                    Platform.OS === 'ios' ? (
+                        <Modal transparent={true} animationType="fade" visible={showDatePicker}>
+                            <TouchableWithoutFeedback onPress={() => setShowDatePicker(false)}>
+                                <View style={styles.iosModalWrapper}>
+                                    {/* El TouchableWithoutFeedback aquí evita que el click DENTRO del cuadro blanco cierre el modal */}
+                                    <TouchableWithoutFeedback>
+                                        <View style={styles.iosPickerContainer}>
+                                            <Text style={styles.modalTitle}>Selecciona tu fecha</Text>
+                                            
+                                            <DateTimePicker 
+                                                value={date} 
+                                                mode="date" 
+                                                display="spinner" 
+                                                maximumDate={new Date()} 
+                                                onChange={onDateChange} 
+                                                textColor="#FFFFFF"
+                                            />
+
+                                            <View style={{ flexDirection: 'row', marginTop: 20, gap: 10 }}>
+                                                <Button 
+                                                    mode="outlined" 
+                                                    onPress={() => setShowDatePicker(false)} 
+                                                    textColor={COLORS.textSub}
+                                                    style={{ flex: 1, borderColor: COLORS.divider }}
+                                                >
+                                                    Cancelar
+                                                </Button>
+                                                <Button 
+                                                    mode="contained" 
+                                                    onPress={() => setShowDatePicker(false)} 
+                                                    buttonColor={COLORS.brandPink}
+                                                    textColor="#000"
+                                                    style={{ flex: 1 }}
+                                                >
+                                                    Confirmar
+                                                </Button>
+                                            </View>
+                                        </View>
+                                    </TouchableWithoutFeedback>
+                                </View>
+                            </TouchableWithoutFeedback>
+                        </Modal>
+                    ) : (
+                        <DateTimePicker 
+                            value={date} 
+                            mode="date" 
+                            display="spinner" 
+                            maximumDate={new Date()} 
+                            onChange={onDateChange} 
+                        />
+                    )
+                )}
 
             <Portal>
                 <Dialog visible={modalVisible} onDismiss={() => setModalVisible(false)} style={{ backgroundColor: COLORS.cardBg }}>
@@ -384,7 +401,7 @@ const CuentaScreen = () => {
             <Modal visible={gymModalVisible} animationType="fade" transparent={true}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Cambiar Sucursal</Text>
+                        <Text style={styles.modalTitle}>Cambiar Sucursall</Text>
                         <ScrollView>
                             {listaGimnasios.map((gym) => {
                                 const idGym = Number(gym.Id || gym.id);
@@ -463,10 +480,10 @@ const styles = StyleSheet.create({
     phoneInput: { flex: 1, color: '#fff', paddingHorizontal: 15 },
     divider: { backgroundColor: COLORS.divider, height: 1 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
-    modalContent: { backgroundColor: COLORS.cardBg, borderRadius: 20, padding: 20, maxHeight: '80%', borderWidth: 1, borderColor: COLORS.divider },
+    modalContent: { backgroundColor: COLORS.cardBg, borderRadius: 20, padding: 20, maxHeight: '90%', borderWidth: 1, borderColor: COLORS.divider },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 20, textAlign: 'center' },
     gymItem: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.divider, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
-    passConfirmBox: { padding: 15, backgroundColor: '#111', borderRadius: 12, marginVertical: 10, borderWidth: 1, borderColor: '#333' },
+    passConfirmBox: { padding: 15, backgroundColor: '#111', borderRadius: 12, marginVertical: 10, borderWidth: 1, borderColor: '#333'},
     modalHeaderCustom: { padding: 15, borderBottomWidth: 1, borderBottomColor: COLORS.divider, backgroundColor: COLORS.bg, alignItems: 'center' },
     modalHeaderTitle: { color: COLORS.textMain, fontSize: 18, fontWeight: 'bold' },
     

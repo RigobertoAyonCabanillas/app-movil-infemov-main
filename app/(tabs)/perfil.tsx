@@ -196,7 +196,7 @@ export default function Perfil() {
                         <View style={{ marginTop: 25, flexDirection: 'row', alignItems: 'center' }}>
                             <ActivityIndicator size="small" color={BRAND_GREEN} />
                             <Text style={{ marginLeft: 10, color: BRAND_GREEN, fontSize: 12, opacity: 0.8 }}>
-                                Esperando escaneo en el gimnasio...
+                                Esperando escaneo en el centro deportivo...
                             </Text>
                         </View>
                     </View>

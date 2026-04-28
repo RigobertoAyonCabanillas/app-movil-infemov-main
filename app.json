@@ -10,7 +10,14 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.infemov.appmovil",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["fixskale-app"]
+          }
+        ]
+      }
     },
     "android": {
       "package": "com.infemov.appmovil",

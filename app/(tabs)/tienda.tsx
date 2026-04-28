@@ -1,7 +1,7 @@
 import { crearSesionCheckout, verificarPagoStripe } from '@/services/api';
 import { useAuthService } from '@/servicesdb/authService';
 import * as Linking from 'expo-linking';
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from 'expo-web-browser';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import {
@@ -11,7 +11,8 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  View
+  View,
+  Platform
 } from 'react-native';
 import { IconButton, Surface, Text } from 'react-native-paper';
 import { UserContext } from '../../components/UserContext';
@@ -133,27 +134,31 @@ export default function MetodosPagoScreen() {
 
     setLoadingId(productoId);
     try {
-      const redirectUrl = Linking.createURL('pagofinalizado', { scheme: 'fixskale-app' });
-      const data = await crearSesionCheckout(productoId, users.id, users.gymId, redirectUrl);
-      
-      if (data?.url && data?.sessionId) {
-        sessionEnCurso.current = data.sessionId;
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    // 1. Simplifica la URL de redirección para iOS
+    const redirectUrl = Linking.createURL('/pagofinalizado'); 
+    
+    const data = await crearSesionCheckout(productoId, users.id, users.gymId, redirectUrl);
+    
+    if (data?.url && data?.sessionId) {
+      sessionEnCurso.current = data.sessionId;
 
-        if (result.type === 'success') {
-          verificarConReintentos(data.sessionId);
-        } else {
-          setLoadingId(null);
-          sessionEnCurso.current = null;
-        }
-      } else {
-        Alert.alert("Error", "No se pudo generar la sesión de pago.");
-        setLoadingId(null);
-      }
-    } catch (e) {
-      Alert.alert("Error", "Ocurrió un problema al conectar con el servidor.");
-      setLoadingId(null);
+      // 2. Ejecutar la sesión
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+      if (result.type === 'success') {
+      // Si el result es success pero no cambió de pantalla solo:
+      verificarConReintentos(data.sessionId);
+      router.replace('/pagofinalizado'); // <-- Forzamos el salto al componente
+    } else if (Platform.OS === 'ios') {
+      // En iOS, a veces el redirect cierra el browser pero retorna 'dismiss'
+      // Verificamos si realmente se completó
+      verificarConReintentos(data.sessionId);
+      router.replace('/pagofinalizado');
     }
+    }
+  } catch (e) {
+    setLoadingId(null);
+  }
   };
 
   // 🛡️ Si users es null por el cierre de sesión, mostramos un loader mientras la navegación nos saca

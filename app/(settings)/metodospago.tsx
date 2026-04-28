@@ -23,7 +23,7 @@ export default function TiendaScreen() {
       <View style={styles.cardFooter}>
         <View>
           <Text style={styles.cardLabel}>TITULAR</Text>
-          <Text style={styles.cardHolder}>USUARIO EJEMPLO</Text>
+          <Text style={styles.cardHolder}>USUARIO </Text>
         </View>
         <Text style={styles.cardType}>{item.tipo}</Text>
       </View>

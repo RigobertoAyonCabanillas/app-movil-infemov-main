@@ -152,7 +152,7 @@ export default function ReservacionesScreen() {
     setLoading(true);
     try {
       await cancelarInscripcionProceso(idClase);
-      Alert.alert("Reserva Cancelada", "Tu lugar ha sido liberado exitosamente.");
+      Alert.alert("Reserva Cancelada", "Tus Créditos fueron regresados exitosamente.");
       await cargarDatos(); 
     } catch (error: any) {
       Alert.alert("Error", error.message);
@@ -245,10 +245,13 @@ export default function ReservacionesScreen() {
           <Modal visible={modalEquipoVisible} onDismiss={() => setModalEquipoVisible(false)} contentContainerStyle={styles.modalContainer}>
             <Text style={styles.modalTitle}>SELECCIONA TU LUGAR</Text>
             <ScrollView 
-              ref={scrollLugaresRef}
-              contentContainerStyle={styles.scrollLugaresContent} 
-              showsVerticalScrollIndicator={true}
-            >
+                ref={scrollLugaresRef}
+                contentContainerStyle={styles.scrollLugaresContent} 
+                showsVerticalScrollIndicator={true}
+                // IMPORTANTE: Esto controla que no se quede pegado en los extremos si el contenido es pequeño
+                bounces={true} 
+                alwaysBounceVertical={true}
+              >
               {(() => {
                 const vacantes = claseSeleccionada?.vacantes || 0;
                 const elementos = Array.from({ length: vacantes }, (_, i) => i + 1);
@@ -486,7 +489,14 @@ const styles = StyleSheet.create({
   textPasado: { color: COLORS.pasadoText, fontSize: 11, fontWeight: 'bold' },
   modalContainer: { backgroundColor: COLORS.cardBg, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, margin: 20, borderRadius: 20, maxHeight: '85%' },
   modalTitle: { color: COLORS.accent, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, fontSize: 16 },
-  scrollLugaresContent: { alignItems: 'center', paddingBottom: 10 },
+  scrollLugaresContent: { 
+  alignItems: 'center', 
+  justifyContent: 'center', // Centra el contenido verticalmente si es poco
+  flexGrow: 1,              // Permite que el contenedor crezca para que el scroll funcione
+  paddingBottom: 40, 
+  paddingTop: 20,           // Añadimos un poco arriba para equilibrio visual
+  width: '100%',
+  },
   filaPersonalizada: { flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 15, marginBottom: 15 },
   botonLugar: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', borderRadius: 12, elevation: 4 },
   modalGestion: { backgroundColor: COLORS.cardBg, padding: 20, margin: 20, borderRadius: 15 },

@@ -15,7 +15,8 @@ import {
   ScrollView,
   StatusBar,
   Keyboard,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Image // Importado para mostrar el logo
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserContext } from "../components/UserContext";
@@ -39,6 +40,7 @@ export default function Login() {
   const [folioValidado, setFolioValidado] = useState(false);
   const [gymSelected, setGymSelected] = useState<number | null>(null);
   const [nombreGimnasio, setNombreGimnasio] = useState("");
+  const [logoGimnasio, setLogoGimnasio] = useState(""); // Estado para el link de la imagen
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [cargandoFolio, setCargandoFolio] = useState(false);
   const [loadingLogin, setLoadingLogin] = useState(false);
@@ -67,7 +69,6 @@ export default function Login() {
     checarAutoLogin();
   }, []);
 
-  // Función para permitir SOLO números en el input de folio
   const handleFolioChange = (text: string) => {
     const soloNumeros = text.replace(/[^0-9]/g, '');
     setFolio(soloNumeros);
@@ -92,19 +93,11 @@ export default function Login() {
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "";
-
       if (errorMsg.includes("JSON") || errorMsg.includes("Network") || errorMsg.includes("fetch")) {
-        Alert.alert(
-          "Servidor fuera de servicio", 
-          "No pudimos conectar con el servidor. Inténtalo más tarde o revisa tu conexión."
-        );
+        Alert.alert("Servidor fuera de servicio", "No pudimos conectar con el servidor.");
       } else {
-        Alert.alert(
-          "Credenciales incorrectas", 
-          "El correo o la contraseña no son válidos. Verifica tus datos e intenta de nuevo."
-        );
+        Alert.alert("Credenciales incorrectas", "El correo o la contraseña no son válidos.");
       }
-      console.error("Detalle del error:", errorMsg);
     } finally {
       setLoadingLogin(false);
     }
@@ -112,7 +105,7 @@ export default function Login() {
 
   const manejarValidacionFolio = async () => {
     if (!folio.trim()) {
-      Alert.alert("Atención", "Por favor, ingresa el folio.");
+      Alert.alert("Campo vacío", "Por favor, ingresa el folio de tu centro deportivo.");
       return;
     }
 
@@ -121,24 +114,39 @@ export default function Login() {
 
     try {
       const res = await validarFolioAPI(folio);
+      
+      // Si la API responde pero el objeto viene vacío o sin ID (depende de tu API)
       if (res && res.id) {
         setGymSelected(res.id); 
         setNombreGimnasio(res.nombre);
+        setLogoGimnasio(res.LogoUrl);
         setShowConfirmModal(true); 
+      } else {
+        // Caso donde la respuesta es exitosa pero no encontró nada
+        Alert.alert(
+          "Folio no encontrado", 
+          "No se encontró el folio del centro deportivo. Por favor, verifica que sea correcto."
+        );
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "";
       
-      // Diferenciamos si el error es de conexión o de datos
-      if (errorMsg.includes("Network") || errorMsg.includes("fetch")) {
+      // Detectar si el error es de conexión
+      if (
+        errorMsg.includes("Network") || 
+        errorMsg.includes("fetch") || 
+        errorMsg.includes("timeout") ||
+        errorMsg.includes("JSON") // A veces el servidor devuelve HTML en vez de JSON cuando falla la red
+      ) {
         Alert.alert(
           "Sin conexión", 
-          "No se pudo establecer conexión con el servidor. Revisa tu internet."
+          "No tenemos conexión con el servidor. Revisa tu internet e inténtalo de nuevo."
         );
       } else {
+        // Caso genérico para folio inválido (error 404 o 400)
         Alert.alert(
-          "Folio no encontrado", 
-          "El folio ingresado no es válido o no existe en nuestro sistema."
+          "Atención", 
+          "No se pudo validar el folio. Asegúrate de haberlo escrito bien."
         );
       }
     } finally {
@@ -162,25 +170,21 @@ export default function Login() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={{ flex: 1 }}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer} 
-          keyboardShouldPersistTaps="handled" 
-          bounces={false}
-        >
+        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled" bounces={false}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.contentWrapper}>
               <View style={styles.neonPanel}>
                 {!folioValidado ? (
                   <>
                     <Text style={styles.neonTitle}>Bienvenido</Text>
-                    <Text style={styles.subTitleText}>Ingresa el Folio Proporcionado por tu Centro</Text>
+                    <Text style={styles.subTitleText}>Ingresa el Folio Proporcionado por tu Centro Deportivo</Text>
                     <View style={styles.inputContainer}>
                       <TextInput
                         style={styles.neonInput}
                         placeholder="Folio de Acceso"
                         placeholderTextColor="#444" 
                         value={folio}
-                        onChangeText={handleFolioChange} // Aplicando restricción numérica
+                        onChangeText={handleFolioChange}
                         keyboardType="numeric" 
                         returnKeyType="done"
                       />
@@ -242,7 +246,15 @@ export default function Login() {
                 <Text style={styles.modalGymName}>{nombreGimnasio}</Text>
                 <Text style={styles.modalSubText}>¿este es tu centro deportivo?</Text>
               </View>
-              <View style={styles.imagePlaceholder} />
+              {logoGimnasio ? (
+                <Image 
+                  source={{ uri: logoGimnasio }} 
+                  style={styles.imagePlaceholder} 
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.imagePlaceholder} />
+              )}
             </View>
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity onPress={() => setShowConfirmModal(false)} style={styles.modalCancelBtn}>
@@ -361,7 +373,15 @@ const styles = StyleSheet.create({
   modalInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   modalGymName: { color: BRAND_PINK, fontWeight: 'bold', fontSize: 22, textTransform: 'uppercase' },
   modalSubText: { color: '#666', fontSize: 13, marginTop: 5 },
-  imagePlaceholder: { width: 70, height: 70, borderRadius: 12, backgroundColor: '#111', marginLeft: 10, borderWidth: 1, borderColor: '#333' },
+  imagePlaceholder: { 
+    width: 70, 
+    height: 70, 
+    borderRadius: 12, 
+    backgroundColor: '#FFF', // Fondo blanco para que el logo resalte
+    marginLeft: 10, 
+    borderWidth: 1, 
+    borderColor: '#333' 
+  },
   modalButtonsRow: { flexDirection: 'row', gap: 10 },
   modalCancelBtn: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#333' },
   modalConfirmBtn: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 2, borderColor: BRAND_GREEN }

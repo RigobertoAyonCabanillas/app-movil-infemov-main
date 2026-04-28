@@ -27,6 +27,9 @@ export default function Home() {
     obtenerCreditosLocal
   } = useAuthService();
 
+
+  console.log("Datos del home", users);
+
   const [loading, setLoading] = useState(false);
 
   useFocusEffect(
@@ -59,7 +62,7 @@ export default function Home() {
       {/* Saludo inicial */}
       <View style={styles.header}>
         <Text style={styles.welcomeText}>Hola,</Text>
-        <Text style={styles.userName}>{users?.nombre || "German"}</Text>
+        <Text style={styles.userName}>{users?.Nombres || users?.nombres}</Text>
       </View>
 
       {/* APARTADO DE PROMOCIONES - SIEMPRE VISIBLE */}
