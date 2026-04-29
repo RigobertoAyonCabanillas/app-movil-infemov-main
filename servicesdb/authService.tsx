@@ -8,6 +8,7 @@ import { router } from "expo-router";
 import { useSQLiteContext } from 'expo-sqlite';
 import { useContext, useMemo } from 'react';
 import { UserContext } from "../components/UserContext";
+import { limpiarDatosLocales } from '@/services/session';
 
 //EL MAPA VA AQUÍ (AFUERA), sin 'export' si solo lo usas aquí, 
 // o con 'export' si lo vas a importar en otro archivo.
@@ -601,15 +602,21 @@ const verificarSesionLocal = async () => {
 
 const cerrarSesionProceso = async () => {
   try {
-    // 1. Limpiamos la tabla de usuarios en SQLite
+    // 1. Ejecutamos la limpieza profunda (Backend, FileSystem y AsyncStorage)
+    // Como ya tiene el fetch con .catch(), manejará el internet automáticamente.
+    await limpiarDatosLocales();
+
+    // 2. Limpieza de las tablas mediante Drizzle (opcional si borras el archivo, pero buena práctica)
     await drizzleDb.delete(schema.usersdb);
     
-    // 2. Limpiamos el estado global del contexto
+    // 3. Limpiamos el estado global del contexto para que el Layout reaccione
     setUsers(null);
     
-    console.log("Log: Sesión limpiada localmente");
+    console.log("Log: Sesión limpiada por completo mediante limpiarDatosLocales");
   } catch (error) {
     console.error("Error al cerrar sesión:", error);
+    // Fallback: Si algo falla, aseguramos que el estado sea null para sacar al usuario
+    setUsers(null);
   }
 };
 

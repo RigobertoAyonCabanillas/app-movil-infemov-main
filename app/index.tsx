@@ -75,33 +75,42 @@ export default function Login() {
   };
 
   const handleLogin = async () => {
-    const email = emailRef.current;
-    const password = passwordRef.current;
+  const email = emailRef.current;
+  const password = passwordRef.current;
 
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Campos incompletos", "Por favor, ingresa tu correo y contraseña.");
-      return;
-    }
+  if (!email.trim() || !password.trim()) {
+    Alert.alert("Campos incompletos", "Por favor, ingresa tu correo y contraseña.");
+    return;
+  }
 
-    try {
-      setLoadingLogin(true);
-      const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected!);
-      
-      if (usuarioLogueado) {
-        setUsers(usuarioLogueado);
-        router.replace("/(tabs)/home"); 
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "";
-      if (errorMsg.includes("JSON") || errorMsg.includes("Network") || errorMsg.includes("fetch")) {
-        Alert.alert("Servidor fuera de servicio", "No pudimos conectar con el servidor.");
-      } else {
-        Alert.alert("Credenciales incorrectas", "El correo o la contraseña no son válidos.");
-      }
-    } finally {
-      setLoadingLogin(false);
+  try {
+    setLoadingLogin(true);
+    const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected!);
+    
+    if (usuarioLogueado) {
+      setUsers(usuarioLogueado);
+      router.replace("/(tabs)/home"); 
     }
-  };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "";
+    console.log("Error detallado:", errorMsg); // Para que veas qué llega exactamente
+
+    // PRIORIDAD: Si el error dice explícitamente algo de credenciales o 401
+    if (errorMsg.includes("401") || errorMsg.includes("credentials") || errorMsg.includes("incorrectas")) {
+      Alert.alert("Credenciales incorrectas", "El correo o la contraseña no son válidos.");
+    } 
+    // SEGUNDO: Errores reales de conexión
+    else if (errorMsg.includes("Network") || errorMsg.includes("fetch") || errorMsg.includes("timeout")) {
+      Alert.alert("Servidor fuera de servicio", "No pudimos conectar con el servidor.");
+    } 
+    // TERCERO: Cualquier otra cosa (como el error de JSON que te está molestando)
+    else {
+      Alert.alert("Credenciales incorrectas", "Verifica tus datos e inténtalo de nuevo.");
+    }
+  } finally {
+    setLoadingLogin(false);
+  }
+};
 
   const manejarValidacionFolio = async () => {
     if (!folio.trim()) {

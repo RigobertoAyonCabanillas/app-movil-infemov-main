@@ -1,14 +1,16 @@
 import { UserContext } from "@/components/UserContext";
 import { actualizarPasswordApi, gestionarSucursalesApi } from "@/services/api";
 import { useAuthService } from "@/servicesdb/authService";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, Platform, TouchableWithoutFeedback } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, Platform, TouchableWithoutFeedback,
+ KeyboardAvoidingView, Dimensions } from 'react-native';
 import CountryPicker, { FlagType, getAllCountries } from 'react-native-country-picker-modal';
 import MaskInput from 'react-native-mask-input';
 import { Button, Dialog, Divider, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
 
 const COLORS = {
     bg: '#000000',
@@ -24,7 +26,8 @@ const COLORS = {
 
 const CuentaScreen = () => {
     const { users, setUsers } = useContext(UserContext);
-    const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword } = useAuthService();
+    const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword, cerrarSesionProceso } = useAuthService();
+    const router = useRouter();
 
     const [nombre, setNombre] = useState('');
     const [apellidoP, setApellidoP] = useState('');
@@ -208,9 +211,45 @@ const CuentaScreen = () => {
             const res = await actualizarPasswordApi(oldPassword, newPassword, users.token || users.Token);
             if (res) {
                 await actualizarPassword(newPassword, users.id || users.Id);
-                Alert.alert("Éxito", "Contraseña cambiada. Por seguridad, inicia sesión de nuevo.", [
-                    { text: "OK", onPress: () => { setUsers(null); router.replace("/"); } }
-                ]);
+                
+                Alert.alert(
+                    "Éxito", 
+                    "Contraseña cambiada. Por seguridad, inicia sesión de nuevo.", 
+                    [
+                        { 
+                            text: "OK", 
+                            onPress: async () => { 
+                                try {
+                                    // 1. ELIMINAR EL ESTADO GLOBAL DE INMEDIATO
+                                    // Esto hace que el RootNavigation (el de afuera) cambie la key a 'guest'.
+                                    // Al cambiar la key, TODO el SettingsLayout que me mostraste se destruye físicamente.
+                                    if (setUsers) setUsers(null); 
+
+                                    // 2. VACIAR EL HISTORIAL DEL STACK INTERNO
+                                    // Esto evita que al cerrarse 'cuenta', intente mostrar 'ajustes'.
+                                    if (router.canDismiss()) {
+                                        router.dismissAll();
+                                    }
+
+                                    // 3. LIMPIEZA DE DATOS (Servicio)
+                                    // Ya no importa el tiempo que tome el fetch o la DB, la UI ya no existe.
+                                    await cerrarSesionProceso(); 
+
+                                    // 4. NAVEGACIÓN ABSOLUTA
+                                    // Usamos un delay mínimo para que React termine de limpiar el árbol de componentes
+                                    setTimeout(() => {
+                                        // Reemplazamos la ruta raíz
+                                        router.replace("/");
+                                    }, 50);
+                                    
+                                } catch (error) {
+                                    if (setUsers) setUsers(null);
+                                    router.replace("/");
+                                }
+                            }
+                        }
+                    ]
+                );
             }
         } catch (error: any) {
             Alert.alert("Error", error.message || "Error al cambiar contraseña.");
@@ -238,8 +277,32 @@ const CuentaScreen = () => {
         } finally { setLoading(false); }
     };
 
+    // Referencia para controlar el ScrollView
+    const scrollRef = React.useRef<ScrollView>(null);
+
+    // Función para desplazar la vista
+    const scrollToInput = (yPosition: number) => {
+    // El pequeño delay es para esperar a que el teclado empiece a desplegarse
+    setTimeout(() => {
+        scrollRef.current?.scrollTo({
+        y: yPosition, 
+        animated: true,
+        });
+    }, 150);
+};
+
     return (
-        <ScrollView style={styles.container}>
+    <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+    >
+        <ScrollView 
+            ref={scrollRef} // Referencia añadida
+            style={styles.container}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+        >
             <StatusBar barStyle="light-content" />
             
             <View style={styles.headerProfile}>
@@ -257,9 +320,39 @@ const CuentaScreen = () => {
                     titleStyle={{ color: COLORS.textMain }}
                 >
                     <View style={styles.formContainer}>
-                        <TextInput label="Nombre" value={nombre} onChangeText={setNombre} mode="outlined" style={styles.input} outlineColor={COLORS.divider} activeOutlineColor={COLORS.brandPink} textColor={COLORS.textMain} />
-                        <TextInput label="Apellido Paterno" value={apellidoP} onChangeText={setApellidoP} mode="outlined" style={styles.input} outlineColor={COLORS.divider} activeOutlineColor={COLORS.brandPink} textColor={COLORS.textMain} />
-                        <TextInput label="Apellido Materno" value={apellidoM} onChangeText={setApellidoM} mode="outlined" style={styles.input} outlineColor={COLORS.divider} activeOutlineColor={COLORS.brandPink} textColor={COLORS.textMain} />
+                        <TextInput 
+                            label="Nombre" 
+                            value={nombre} 
+                            onChangeText={setNombre} 
+                            mode="outlined" 
+                            style={styles.input} 
+                            outlineColor={COLORS.divider} 
+                            activeOutlineColor={COLORS.brandPink} 
+                            textColor={COLORS.textMain}
+                            onFocus={() => scrollToInput(0)} // Scroll al inicio
+                        />
+                        <TextInput 
+                            label="Apellido Paterno" 
+                            value={apellidoP} 
+                            onChangeText={setApellidoP} 
+                            mode="outlined" 
+                            style={styles.input} 
+                            outlineColor={COLORS.divider} 
+                            activeOutlineColor={COLORS.brandPink} 
+                            textColor={COLORS.textMain}
+                            onFocus={() => scrollToInput(50)}
+                        />
+                        <TextInput 
+                            label="Apellido Materno" 
+                            value={apellidoM} 
+                            onChangeText={setApellidoM} 
+                            mode="outlined" 
+                            style={styles.input} 
+                            outlineColor={COLORS.divider} 
+                            activeOutlineColor={COLORS.brandPink} 
+                            textColor={COLORS.textMain}
+                            onFocus={() => scrollToInput(100)}
+                        />
                         
                         <Text style={styles.phoneLabel}>Fecha de Nacimiento</Text>
                         <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateBtn}>
@@ -287,6 +380,7 @@ const CuentaScreen = () => {
                                 style={styles.phoneInput}
                                 placeholder="(644) 000-0000"
                                 placeholderTextColor="#444"
+                                onFocus={() => scrollToInput(400)} // Scroll para el teléfono (más abajo)
                             />
                         </View>
 
@@ -329,61 +423,38 @@ const CuentaScreen = () => {
                 />
             </View>
 
-            {/* --- MODAL PARA FECHA (CENTRA EN IOS) --- */}
-                {showDatePicker && (
-                    Platform.OS === 'ios' ? (
-                        <Modal transparent={true} animationType="fade" visible={showDatePicker}>
-                            <TouchableWithoutFeedback onPress={() => setShowDatePicker(false)}>
-                                <View style={styles.iosModalWrapper}>
-                                    {/* El TouchableWithoutFeedback aquí evita que el click DENTRO del cuadro blanco cierre el modal */}
-                                    <TouchableWithoutFeedback>
-                                        <View style={styles.iosPickerContainer}>
-                                            <Text style={styles.modalTitle}>Selecciona tu fecha</Text>
-                                            
-                                            <DateTimePicker 
-                                                value={date} 
-                                                mode="date" 
-                                                display="spinner" 
-                                                maximumDate={new Date()} 
-                                                onChange={onDateChange} 
-                                                textColor="#FFFFFF"
-                                            />
-
-                                            <View style={{ flexDirection: 'row', marginTop: 20, gap: 10 }}>
-                                                <Button 
-                                                    mode="outlined" 
-                                                    onPress={() => setShowDatePicker(false)} 
-                                                    textColor={COLORS.textSub}
-                                                    style={{ flex: 1, borderColor: COLORS.divider }}
-                                                >
-                                                    Cancelar
-                                                </Button>
-                                                <Button 
-                                                    mode="contained" 
-                                                    onPress={() => setShowDatePicker(false)} 
-                                                    buttonColor={COLORS.brandPink}
-                                                    textColor="#000"
-                                                    style={{ flex: 1 }}
-                                                >
-                                                    Confirmar
-                                                </Button>
-                                            </View>
+            {/* Los modales se mantienen fuera de las secciones de input pero dentro del ScrollView/Portal */}
+            {showDatePicker && (
+                Platform.OS === 'ios' ? (
+                    <Modal transparent={true} animationType="fade" visible={showDatePicker}>
+                        <TouchableWithoutFeedback onPress={() => setShowDatePicker(false)}>
+                            <View style={styles.iosModalWrapper}>
+                                <TouchableWithoutFeedback>
+                                    <View style={styles.iosPickerContainer}>
+                                        <Text style={styles.modalTitle}>Selecciona tu fecha</Text>
+                                        <DateTimePicker 
+                                            value={date} 
+                                            mode="date" 
+                                            display="spinner" 
+                                            maximumDate={new Date()} 
+                                            onChange={onDateChange} 
+                                            textColor="#FFFFFF"
+                                        />
+                                        <View style={{ flexDirection: 'row', marginTop: 20, gap: 10 }}>
+                                            <Button mode="outlined" onPress={() => setShowDatePicker(false)} textColor={COLORS.textSub} style={{ flex: 1, borderColor: COLORS.divider }}>Cancelar</Button>
+                                            <Button mode="contained" onPress={() => setShowDatePicker(false)} buttonColor={COLORS.brandPink} textColor="#000" style={{ flex: 1 }}>Confirmar</Button>
                                         </View>
-                                    </TouchableWithoutFeedback>
-                                </View>
-                            </TouchableWithoutFeedback>
-                        </Modal>
-                    ) : (
-                        <DateTimePicker 
-                            value={date} 
-                            mode="date" 
-                            display="spinner" 
-                            maximumDate={new Date()} 
-                            onChange={onDateChange} 
-                        />
-                    )
-                )}
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+                ) : (
+                    <DateTimePicker value={date} mode="date" display="spinner" maximumDate={new Date()} onChange={onDateChange} />
+                )
+            )}
 
+            {/* Portal y Modales de Sucursal/País (sin cambios) */}
             <Portal>
                 <Dialog visible={modalVisible} onDismiss={() => setModalVisible(false)} style={{ backgroundColor: COLORS.cardBg }}>
                     <Dialog.Title style={{ color: COLORS.textMain }}>Actualizar Contraseña</Dialog.Title>
@@ -398,35 +469,84 @@ const CuentaScreen = () => {
                 </Dialog>
             </Portal>
 
-            <Modal visible={gymModalVisible} animationType="fade" transparent={true}>
+            {/* --- MODAL DE GIMNASIOS (Asegúrate de que este bloque esté aquí) --- */}
+            <Modal visible={gymModalVisible} animationType="slide" transparent={true}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Cambiar Sucursall</Text>
+                        <Text style={styles.modalTitle}>Cambiar Sucursal</Text>
                         <ScrollView>
                             {listaGimnasios.map((gym) => {
                                 const idGym = Number(gym.Id || gym.id);
                                 const idAct = Number(users?.GimnasioActual || users?.gymId);
                                 const isSelected = gymSeleccionadoId === idGym;
+                                const uriLogo = gym.LogoUrl || gym.logo || null;
+
                                 return (
-                                    <View key={idGym} style={{ marginBottom: 5 }}>
+                                    <View key={idGym} style={{ marginBottom: 10 }}>
                                         <TouchableOpacity 
-                                            style={[styles.gymItem, isSelected && { borderColor: COLORS.accent, backgroundColor: '#1A1A1A' }]}
-                                            onPress={() => setGymSeleccionadoId(idGym)}
+                                            style={[
+                                                styles.gymItem, 
+                                                isSelected && { borderColor: COLORS.accent, backgroundColor: '#1A1A1A' }
+                                            ]}
+                                            onPress={() => setGymSeleccionadoId(idGym)} // Aquí se selecciona
                                         >
-                                            <Text style={{ color: isSelected ? COLORS.accent : COLORS.textMain }}>{gym.Nombre}</Text>
-                                            {idGym === idAct && <IconButton icon="check-circle" iconColor={COLORS.accent} size={20} />}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                                {uriLogo ? (
+                                                    <Image 
+                                                        source={{ uri: uriLogo }} 
+                                                        style={{ width: 40, height: 40, borderRadius: 10, marginRight: 12 }} 
+                                                    />
+                                                ) : (
+                                                    <View style={{ 
+                                                        width: 40, height: 40, borderRadius: 20, 
+                                                        backgroundColor: '#333', marginRight: 12,
+                                                        justifyContent: 'center', alignItems: 'center' 
+                                                    }}>
+                                                        <List.Icon icon="store" color="#666" />
+                                                    </View>
+                                                )}
+                                                <Text style={{ color: isSelected ? COLORS.accent : COLORS.textMain }}>
+                                                    {gym.Nombre}
+                                                </Text>
+                                            </View>
+                                            {idGym === idAct && (
+                                                <IconButton icon="check-circle" iconColor={COLORS.accent} size={20} />
+                                            )}
                                         </TouchableOpacity>
+
+                                        {/* Confirmación con password */}
                                         {isSelected && idGym !== idAct && (
                                             <View style={styles.passConfirmBox}>
-                                                <TextInput label="Contraseña" value={passwordCambio} onChangeText={setPasswordCambio} secureTextEntry mode="outlined" activeOutlineColor={COLORS.accent} style={styles.input} />
-                                                <Button mode="contained" onPress={() => handleCambiarGym(idGym, passwordCambio)} loading={loading} buttonColor={COLORS.accent} textColor="#000">Confirmar</Button>
+                                                <TextInput 
+                                                    label="Tu contraseña" 
+                                                    value={passwordCambio} 
+                                                    onChangeText={setPasswordCambio} 
+                                                    secureTextEntry 
+                                                    mode="outlined" 
+                                                    activeOutlineColor={COLORS.accent} 
+                                                    style={styles.input} 
+                                                />
+                                                <Button 
+                                                    mode="contained" 
+                                                    onPress={() => handleCambiarGym(idGym, passwordCambio)} 
+                                                    loading={loading} 
+                                                    buttonColor={COLORS.accent} 
+                                                    textColor="#000"
+                                                >
+                                                    Confirmar Cambio
+                                                </Button>
                                             </View>
                                         )}
                                     </View>
                                 );
                             })}
                         </ScrollView>
-                        <Button onPress={() => { setGymModalVisible(false); setGymSeleccionadoId(null); }} textColor={COLORS.textSub}>Cerrar</Button>
+                        <Button 
+                            onPress={() => { setGymModalVisible(false); setGymSeleccionadoId(null); }} 
+                            textColor={COLORS.textSub}
+                        >
+                            Cerrar
+                        </Button>
                     </View>
                 </View>
             </Modal>
@@ -457,8 +577,10 @@ const CuentaScreen = () => {
                     <Button onPress={() => setShowCountryPicker(false)} textColor={COLORS.brandPink}>Cerrar</Button>
                 </SafeAreaView>
             </Modal>
+
         </ScrollView>
-    );
+    </KeyboardAvoidingView>
+);
 };
 
 const styles = StyleSheet.create({
@@ -480,7 +602,7 @@ const styles = StyleSheet.create({
     phoneInput: { flex: 1, color: '#fff', paddingHorizontal: 15 },
     divider: { backgroundColor: COLORS.divider, height: 1 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
-    modalContent: { backgroundColor: COLORS.cardBg, borderRadius: 20, padding: 20, maxHeight: '90%', borderWidth: 1, borderColor: COLORS.divider },
+    modalContent: { backgroundColor: COLORS.cardBg, borderRadius: 20, padding: 20, maxHeight: '90%', borderWidth: 1, borderColor: COLORS.accent },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 20, textAlign: 'center' },
     gymItem: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.divider, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
     passConfirmBox: { padding: 15, backgroundColor: '#111', borderRadius: 12, marginVertical: 10, borderWidth: 1, borderColor: '#333'},

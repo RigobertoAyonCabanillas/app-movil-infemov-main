@@ -29,9 +29,15 @@ function RootNavigation() {
   const { users } = useContext(UserContext);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    /* Añadimos una key dinámica. 
+       Cuando users pasa de 'datos' a 'null', la key cambia de 'auth' a 'guest'.
+       Esto destruye físicamente el historial viejo y evita que se pueda regresar.
+    */
+    <Stack 
+      key={users ? 'auth' : 'guest'} 
+      screenOptions={{ headerShown: false }}
+    >
       {!users ? (
-        // Al estar solo esta pantalla, el historial se reduce a 1 solo elemento
         <Stack.Screen name="index" options={{ gestureEnabled: false }} />
       ) : (
         <>
