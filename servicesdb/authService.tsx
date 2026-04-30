@@ -1,14 +1,13 @@
 import * as schema from '@/db/schema';
 import { actualizarPerfilApi, cancelarInscripcion, enviarDatosLogin, enviarDatosRegistro, enviarSugerenciaApi, gestionarSucursalesApi, inscribirAClase, obtenerClasesGimnasio, obtenerDatosPerfil, obtenerMisClases, sincronizarCreditosDesdeApi, sincronizarMembresiasDesdeApi } from '@/services/api';
+import { limpiarDatosLocales } from '@/services/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { eq, sql, ne } from 'drizzle-orm';
+import { eq, ne } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
-import * as Crypto from 'expo-crypto'; // 1. Importar Crypto
 import { router } from "expo-router";
 import { useSQLiteContext } from 'expo-sqlite';
 import { useContext, useMemo } from 'react';
 import { UserContext } from "../components/UserContext";
-import { limpiarDatosLocales } from '@/services/session';
 
 //EL MAPA VA AQUÍ (AFUERA), sin 'export' si solo lo usas aquí, 
 // o con 'export' si lo vas a importar en otro archivo.
@@ -25,39 +24,54 @@ export function useAuthService() {
   const { users, setUsers } = useContext(UserContext);
 
   // --- 1. REGISTRO MANUAL ---
-  const registrarUsuarioProceso = async (datosFormulario: any) => {
-    try {
-      await drizzleDb.insert(schema.usersdb).values({
-        //id: datosFormulario.email, // Usamos el email como ID temporal para que no sea nulo
-        nombres: datosFormulario.nombre,
-        apellidoPaterno: datosFormulario.apellidoPaterno,
-        apellidoMaterno: datosFormulario.apellidoMaterno,
-        correo: datosFormulario.email,
-        telefono: datosFormulario.telefono,
-        contrasena: datosFormulario.password,
-        estudiante: datosFormulario.estudiante,
-        fechaNacimiento: datosFormulario.fechaNacimiento,
-        gymId: datosFormulario.gymId, // superUsuario
-        token: null, 
-      });
+const registrarUsuarioProceso = async (datosFormulario: any) => {
+  try {
+    // 1. Intentar registro en la API primero
+    // Si la API falla (ej. correo duplicado), saltará directamente al catch
+    const respuestaApi = await enviarDatosRegistro(datosFormulario);
 
-      console.log("✅ Guardado en SQLite con éxito");
-      try {
-        await enviarDatosRegistro(datosFormulario);
-      } catch (apiError) {
-        console.warn("⚠️ Falló API, pero el dato está seguro en el móvil:", apiError);
-      }
+    // 2. Si la API fue exitosa, procedemos a guardar en la base de datos local (SQLite)
+    await drizzleDb.insert(schema.usersdb).values({
+      nombres: datosFormulario.nombre,
+      apellidoPaterno: datosFormulario.apellidoPaterno,
+      apellidoMaterno: datosFormulario.apellidoMaterno,
+      correo: datosFormulario.email,
+      telefono: datosFormulario.telefono,
+      contrasena: datosFormulario.password,
+      estudiante: datosFormulario.estudiante,
+      fechaNacimiento: datosFormulario.fechaNacimiento,
+      gymId: datosFormulario.gymId,
+      token: respuestaApi?.token || null, // Guardamos el token que nos dio el servidor
+    });
 
-      alert("¡Registro exitoso!");
-      router.replace("/");
-    } catch (dbError: any) {
-      if (dbError.message.includes("UNIQUE constraint failed")) {
-        alert("Error: Este correo electrónico ya está registrado.");
-      } else {
-        console.error("❌ Error de DB:", dbError);
-      }
+    console.log("✅ Registro exitoso: Sincronizado con API y guardado en SQLite");
+    
+    // Retornamos la respuesta por si la pantalla necesita algún dato extra
+    return respuestaApi;
+
+  } catch (error: any) {
+    // Extraemos el mensaje de error que viene del servidor o del sistema
+    const mensajeError = error?.response?.data?.error || error.message || "";
+
+    // Manejo de errores específicos para feedback del usuario
+    if (mensajeError.includes("ya se encuentra registrado")) {
+      alert("Error del servidor: El correo ya está registrado y activo.");
+    } else if (mensajeError.includes("UNIQUE constraint failed")) {
+      alert("Error local: Este usuario ya existe en la base de datos del teléfono.");
+    } else if (mensajeError.includes("Network Error")) {
+      alert("Error de conexión: Revisa tu internet.");
+    } else {
+      console.error("❌ Error crítico en el proceso de registro:", error);
+      alert("Ocurrió un error inesperado al registrar.");
     }
-  };
+
+    /* IMPORTANTE: Propagamos el error con 'throw'. 
+       Esto hace que el 'try/catch' de tu pantalla (Registro.tsx) se active 
+       y no ejecute el router.replace("/") ni limpie el formulario.
+    */
+    throw error; 
+  }
+};
 
 // --- 2. LOGIN LOCAL ADAPTADO PARA ROLES ---
 const loginUsuarioProceso = async (email: string, password: string, gymSelected: number) => {
@@ -65,24 +79,18 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
     const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
-      // 2. GENERAR EL HASH DE LA CONTRASEÑA
-      // Usamos SHA-256 para convertir "Bana123456" en una cadena alfanumérica larga
-      const passwordHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        password
-      );
-
-      // 3. LIMPIEZA TOTAL
+      
+      // 1. LIMPIEZA TOTAL de la base de datos local
       await drizzleDb.delete(schema.usersdb);
 
       const rolUsuario = respuestaApi.Rol || "Cliente"; 
 
-      // 4. INSERTAR en SQLite usando el passwordHash
+      // 2. INSERTAR en SQLite (Contraseña en texto normal)
       await drizzleDb.insert(schema.usersdb).values({
         id: respuestaApi.Id, 
         token: respuestaApi.Token,
         correo: email,
-        contrasena: passwordHash, // <-- Guardamos el hash, no la contraseña real
+        contrasena: password, // <--- SE GUARDA EL TEXTO PLANO DIRECTAMENTE
         nombres: respuestaApi.Nombres || "", 
         apellidoPaterno: respuestaApi.ApellidoPaterno || "",
         apellidoMaterno: respuestaApi.ApellidoMaterno || "",
@@ -94,24 +102,23 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         deviceId: respuestaApi.DeviceId || "",
       });
 
-      // 5. ACTUALIZAR ESTADO GLOBAL
+      // 3. ACTUALIZAR ESTADO GLOBAL
       setUsers({ 
         id: respuestaApi.Id,
         token: respuestaApi.Token,
         gymId: respuestaApi.GimnasioActual || gymSelected,
         nombres: respuestaApi.Nombres || "",
         correo: email,
-        rol: rolUsuario
+        rol: rolUsuario,
       }); 
 
-      console.log(`✅ Sesión iniciada y contraseña hasheada localmente.`);
+      console.log(`✅ Sesión iniciada. Contraseña guardada en texto plano localmente.`);
     }
 
     return respuestaApi;
 
   } catch (error) {
     console.error("Error en login local:", error);
-    // REGLA DE ORO: No uses alerts aquí. Lanza el error para que el UI lo maneje.
     throw error;
   }
 };

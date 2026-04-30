@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CryptoJS from 'crypto-js';
 
-export const API_URL = 'http://192.168.0.106:5254/api';
-const API_URL2 =       'http://192.168.0.106:5254/api';
+export const API_URL = 'http://72.167.42.111:5254/api';
+const API_URL2 =       'http://100.116.49.102:5254/api';
+
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
 // Debe ser la misma que pongas en tu código de C#
@@ -390,6 +391,7 @@ export const gestionarSucursalesApi = async (correo, password = "", superUsuario
 
     // 4. Manejo de respuesta
     const text = await response.text(); 
+    console.log("Datos del la respuesta GYM", text)
     
     if (!text) {
       throw new Error("El servidor no devolvió contenido.");
@@ -414,6 +416,8 @@ export const gestionarSucursalesApi = async (correo, password = "", superUsuario
     }
 
     const jsonDescifrado = desencriptarDatos(payloadCifrado);
+
+    console.log("Datos del gym Desencriptados", jsonDescifrado)
     
     const resultadoFinal = typeof jsonDescifrado === 'string' 
       ? JSON.parse(jsonDescifrado) 

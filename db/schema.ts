@@ -8,7 +8,7 @@ export const usersdb = sqliteTable('usersdb', {
   apellidoMaterno: text('apellidoMaterno'),
   correo: text('correo'),
   telefono: text('telefono'),
-  contrasena: text('contrasena').notNull(), // Esta sí es obligatoria
+  contrasena: text('contrasena'), // Esta sí es obligatoria
   estudiante: text('estudiante'),
   fechaNacimiento: text('fechaNacimiento'),
   token: text('token'),

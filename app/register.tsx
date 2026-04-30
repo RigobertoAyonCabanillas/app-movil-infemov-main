@@ -1,19 +1,27 @@
+import { useAuthService } from "@/servicesdb/authService";
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from "@react-native-picker/picker";
+import * as Application from 'expo-application';
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useContext, useState } from "react";
-import { UserContext } from "../components/UserContext";
-import { useAuthService } from "@/servicesdb/authService";
-import * as Application from 'expo-application';
-import { 
-  Alert, Platform, ScrollView, KeyboardAvoidingView, 
-  TouchableOpacity, View, Text, Image, Modal, StyleSheet, 
-  Dimensions, TextInput, ActivityIndicator 
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform, ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity, View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Picker } from "@react-native-picker/picker";
-import DateTimePicker from '@react-native-community/datetimepicker';
+import CountryPicker, { Country, CountryCode } from 'react-native-country-picker-modal';
 import MaskInput from 'react-native-mask-input';
-import CountryPicker, { CountryCode, Country } from 'react-native-country-picker-modal';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import BtnLoginGoogle from "../components/BtnLoginGoogle";
+import { UserContext } from "../components/UserContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -100,13 +108,22 @@ export default function Registro() {
         gymId: gymSelected
       };
 
+      // 1. Solo registramos en la base de datos (API y Local)
       await registrarUsuarioProceso(NewUser);
-      setUsers(NewUser);
-      Alert.alert("Éxito", "Registro completado correctamente");
-      router.replace("/"); 
+      
+      // 2. NO HACER setUsers(NewUser); 
+      // Al no setearlo, el contexto sigue vacío y la app no te loguea solo.
+      //setUsers(NewUser);
+
+      // Nota: El alert de "Éxito" muévelo preferiblemente dentro del servicio 
+      // o asegúrate de que registrarUsuarioProceso lance un error si la API falla.
+
+      // 3. Mandar al Login (que es la raíz "/")
+      router.replace("/");
     } catch (error) {
-      console.error("Error en registro:", error);
-      Alert.alert("Error", "No se pudo completar el registro.");
+      // Este catch ahora sí atrapará los errores reales
+      console.error("Error en pantalla registro:", error);
+      // No necesitas poner un Alert aquí si tu servicio (authService) ya muestra uno.
     } finally {
       setLoading(false);
     }
