@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import CryptoJS from 'crypto-js';
 
 export const API_URL = 'http://72.167.42.111:5254/api';
-const API_URL2 =       'http://100.116.49.102:5254/api';
+const API_URL2 =       'http://72.167.42.111:5254/api';
 
 
 // IMPORTANTE: Esta llave debe tener exactamente 16, 24 o 32 caracteres
@@ -327,8 +327,11 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
       body: JSON.stringify({ Data: cifrado.toString() }),
     });
 
+    
+
     // 1. Obtener el texto plano primero para evitar errores de parseo
     const rawText = await response.text();
+    console.log("Respuesta del servidor contrasena:", rawText);
     
     // 2. Intentar convertir a JSON solo si hay contenido
     let resultadoJson = {};
@@ -336,6 +339,7 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
       try {
         resultadoJson = JSON.parse(rawText);
       } catch (e) {
+        console.log("Respuesta del servidor contrasena:", response);
         throw new Error("La respuesta del servidor no es un JSON válido.");
       }
     }
@@ -365,11 +369,14 @@ export const actualizarPasswordApi = async (passwordActual, nuevaPassword, token
 // --- FUNCION GESTIONAR SUCURSALES (ADAPTADA AL FETCH SEGURO) ---
 export const gestionarSucursalesApi = async (correo, password = "", superUsuarioId = null) => {
   try {
-    // 1. Preparar el objeto para el C#
+
+    // 1. Preparar el objeto con tipos de datos explícitos
     const datosRequest = {
-      Correo: correo?.trim(),
-      Password: password || "", 
-      SuperUsuarioId: superUsuarioId ? Number(superUsuarioId) : null
+        Correo: correo?.trim(),
+        // Forzamos que si no hay ID, sea 0 o null explícito, 
+        // pero siempre manteniendo la estructura que el API espera.
+        SuperUsuarioId: superUsuarioId ? Number(superUsuarioId) : null,
+        Password: password || "" 
     };
 
     console.log("🔐 Enviando GESTIÓN SUCURSAL:", datosRequest);
@@ -389,6 +396,7 @@ export const gestionarSucursalesApi = async (correo, password = "", superUsuario
       body: JSON.stringify({ Data: cifrado }),
     });
 
+    console.log("Datos del la respuesta GYM respuesta", response)
     // 4. Manejo de respuesta
     const text = await response.text(); 
     console.log("Datos del la respuesta GYM", text)

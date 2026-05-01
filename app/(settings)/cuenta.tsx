@@ -28,6 +28,7 @@ const CuentaScreen = () => {
     const { users, setUsers } = useContext(UserContext);
     const { sincronizarActualizacionPerfil, actualizarGimnasioSeleccionado, actualizarPassword, cerrarSesionProceso } = useAuthService();
     const router = useRouter();
+    console.log("USERS", users);    
 
     const [nombre, setNombre] = useState('');
     const [apellidoP, setApellidoP] = useState('');
@@ -56,6 +57,9 @@ const CuentaScreen = () => {
     const [passwordCambio, setPasswordCambio] = useState("");
     const [gymSeleccionadoId, setGymSeleccionadoId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
+
+    //Validacion de Contraseña
+    const [pudoValidarActual, setPudoValidarActual] = useState(false);
 
     const hayCambios = useMemo(() => {
         if (!users) return false;
@@ -183,80 +187,78 @@ const CuentaScreen = () => {
     };
 
     const handleConfirmarCambioPass = async () => {
-        // 1. Validar que no estén vacíos
-        if (!oldPassword.trim() || !newPassword.trim()) {
-            Alert.alert("Campos requeridos", "Por favor, completa ambos campos de contraseña.");
-            return;
-        }
+    // 1. Validar que los campos no estén vacíos
+    if (!oldPassword.trim() || !newPassword.trim()) {
+        Alert.alert("Campos requeridos", "Por favor, completa ambos campos de contraseña.");
+        return;
+    }
 
-        // 2. Validar complejidad PRIMERO
-        // Esto evita que salga el mensaje de "son iguales" si ni siquiera es una contraseña válida
-        const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-        if (!complejidadRegex.test(newPassword)) {
+    // 2. Validar complejidad
+    const complejidadRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!complejidadRegex.test(newPassword)) {
+        Alert.alert(
+            "Seguridad insuficiente", 
+            "La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número."
+        );
+        return;
+    }
+
+    // 3. Validar que sean diferentes SOLO si el servidor ya confirmó la actual antes
+    // Esto evita que salga este error si el usuario aún no pone bien la vieja
+    if (pudoValidarActual && oldPassword === newPassword) {
+        Alert.alert("Atención", "La nueva contraseña debe ser diferente a la actual.");
+        return;
+    }
+
+    setLoading(true);
+    try {
+        const res = await actualizarPasswordApi(
+            oldPassword, 
+            newPassword, 
+            users.token || users.Token
+        );
+
+        if (res) {
+            // Si el API responde éxito, significa que la actual fue correcta
+            setPudoValidarActual(true); 
+
+            await actualizarPassword(newPassword, users.id || users.Id);
+            
             Alert.alert(
-                "Seguridad insuficiente", 
-                "La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número."
-            );
-            return;
-        }
-
-        // 3. Validar que sean diferentes SOLO si la nueva ya es válida
-        if (oldPassword === newPassword) {
-            Alert.alert("Atención", "La nueva contraseña debe ser diferente a la actual.");
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const res = await actualizarPasswordApi(oldPassword, newPassword, users.token || users.Token);
-            if (res) {
-                await actualizarPassword(newPassword, users.id || users.Id);
-                
-                Alert.alert(
-                    "Éxito", 
-                    "Contraseña cambiada. Por seguridad, inicia sesión de nuevo.", 
-                    [
-                        { 
-                            text: "OK", 
-                            onPress: async () => { 
-                                try {
-                                    // 1. ELIMINAR EL ESTADO GLOBAL DE INMEDIATO
-                                    // Esto hace que el RootNavigation (el de afuera) cambie la key a 'guest'.
-                                    // Al cambiar la key, TODO el SettingsLayout que me mostraste se destruye físicamente.
-                                    if (setUsers) setUsers(null); 
-
-                                    // 2. VACIAR EL HISTORIAL DEL STACK INTERNO
-                                    // Esto evita que al cerrarse 'cuenta', intente mostrar 'ajustes'.
-                                    if (router.canDismiss()) {
-                                        router.dismissAll();
-                                    }
-
-                                    // 3. LIMPIEZA DE DATOS (Servicio)
-                                    // Ya no importa el tiempo que tome el fetch o la DB, la UI ya no existe.
-                                    await cerrarSesionProceso(); 
-
-                                    // 4. NAVEGACIÓN ABSOLUTA
-                                    // Usamos un delay mínimo para que React termine de limpiar el árbol de componentes
-                                    setTimeout(() => {
-                                        // Reemplazamos la ruta raíz
-                                        router.replace("/");
-                                    }, 50);
-                                    
-                                } catch (error) {
-                                    if (setUsers) setUsers(null);
-                                    router.replace("/");
-                                }
+                "Éxito", 
+                "Contraseña cambiada. Por seguridad, inicia sesión de nuevo.", 
+                [
+                    { 
+                        text: "OK", 
+                        onPress: async () => { 
+                            try {
+                                if (setUsers) setUsers(null); 
+                                if (router.canDismiss()) router.dismissAll();
+                                await cerrarSesionProceso(); 
+                                setTimeout(() => { router.replace("/"); }, 50);
+                            } catch (error) {
+                                if (setUsers) setUsers(null);
+                                router.replace("/");
                             }
                         }
-                    ]
-                );
-            }
-        } catch (error: any) {
-            Alert.alert("Error", error.message || "Error al cambiar contraseña.");
-        } finally { 
-            setLoading(false); 
+                    }
+                ]
+            );
         }
-    };
+    } catch (error: any) {
+        // Capturamos el error del backend
+        const msgError = error.message || "";
+        
+        if (msgError.includes("incorrecta")) {
+            // Si la contraseña actual está mal, reseteamos el estado
+            setPudoValidarActual(false);
+        }
+
+        Alert.alert("Error", msgError || "Ocurrió un error en el servidor.");
+    } finally { 
+        setLoading(false); 
+    }
+};
 
     const handleCambiarGym = async (gymId: number, password: string) => {
         if (!password) {
@@ -391,7 +393,7 @@ const CuentaScreen = () => {
                             disabled={!hayCambios || loading}
                             buttonColor={COLORS.brandPink} 
                             textColor="#000" 
-                            style={[styles.mainBtn, (!hayCambios && !loading) && { opacity: 0.6 }]}
+                            style={[styles.mainBtn, (!hayCambios && !loading) && { opacity: 2.6 }]}
                         >
                             Guardar Perfil
                         </Button>

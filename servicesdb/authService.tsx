@@ -8,6 +8,7 @@ import { router } from "expo-router";
 import { useSQLiteContext } from 'expo-sqlite';
 import { useContext, useMemo } from 'react';
 import { UserContext } from "../components/UserContext";
+import * as Crypto from 'expo-crypto';
 
 //EL MAPA VA AQUÍ (AFUERA), sin 'export' si solo lo usas aquí, 
 // o con 'export' si lo vas a importar en otro archivo.
@@ -73,24 +74,31 @@ const registrarUsuarioProceso = async (datosFormulario: any) => {
   }
 };
 
-// --- 2. LOGIN LOCAL ADAPTADO PARA ROLES ---
+// --- 2. LOGIN LOCAL ADAPTADO CON HASH SHA-256 ---
 const loginUsuarioProceso = async (email: string, password: string, gymSelected: number) => {
   try {
     const respuestaApi = await enviarDatosLogin(email, password, gymSelected);
 
     if (respuestaApi && respuestaApi.Token) {
       
+      // GENERAR HASH SHA-256 en Base64
+      const passwordHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        password,
+        { encoding: Crypto.CryptoEncoding.BASE64 }
+      );
+
       // 1. LIMPIEZA TOTAL de la base de datos local
       await drizzleDb.delete(schema.usersdb);
 
       const rolUsuario = respuestaApi.Rol || "Cliente"; 
 
-      // 2. INSERTAR en SQLite (Contraseña en texto normal)
+      // 2. INSERTAR en SQLite (Guardamos el HASH)
       await drizzleDb.insert(schema.usersdb).values({
         id: respuestaApi.Id, 
         token: respuestaApi.Token,
         correo: email,
-        contrasena: password, // <--- SE GUARDA EL TEXTO PLANO DIRECTAMENTE
+        contrasena: passwordHash, // <--- AHORA SE GUARDA EL HASH EN BASE64
         nombres: respuestaApi.Nombres || "", 
         apellidoPaterno: respuestaApi.ApellidoPaterno || "",
         apellidoMaterno: respuestaApi.ApellidoMaterno || "",
@@ -102,7 +110,8 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         deviceId: respuestaApi.DeviceId || "",
       });
 
-      // 3. ACTUALIZAR ESTADO GLOBAL
+      // 3. ACTUALIZAR ESTADO GLOBAL (Contexto)
+      // Guardamos el hash en el contexto para que esté disponible en memoria
       setUsers({ 
         id: respuestaApi.Id,
         token: respuestaApi.Token,
@@ -110,9 +119,10 @@ const loginUsuarioProceso = async (email: string, password: string, gymSelected:
         nombres: respuestaApi.Nombres || "",
         correo: email,
         rol: rolUsuario,
+        contrasena: passwordHash, // Opcional: puedes guardar 'password' (plana) si la ocupas luego
       }); 
 
-      console.log(`✅ Sesión iniciada. Contraseña guardada en texto plano localmente.`);
+      console.log(`✅ Sesión iniciada. Hash generado: ${passwordHash}`);
     }
 
     return respuestaApi;
@@ -368,6 +378,7 @@ const actualizarBaseDatosLocalCreditos = async (usuarioId: number, gymId: number
 
 
 // --- 7. ACTUALIZAR CONTRASEÑA --- //
+//Es solo para guardar en SQLite
 const actualizarPassword = async (nuevoPassword: string, usuarioId: number ) => {
   try {
     // Usamos drizzleDb (el que creaste con useMemo)

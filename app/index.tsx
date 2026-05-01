@@ -86,6 +86,8 @@ export default function Login() {
   try {
     setLoadingLogin(true);
     const usuarioLogueado = await loginUsuarioProceso(email, password, gymSelected!);
+
+    console.log("Usuario logueado:", usuarioLogueado);
     
     if (usuarioLogueado) {
       setUsers(usuarioLogueado);
@@ -386,10 +388,10 @@ const styles = StyleSheet.create({
     width: 70, 
     height: 70, 
     borderRadius: 12, 
-    backgroundColor: '#FFF', // Fondo blanco para que el logo resalte
+    backgroundColor: 'trasparent', // Fondo blanco para que el logo resalte
     marginLeft: 10, 
     borderWidth: 1, 
-    borderColor: '#333' 
+    borderColor: 'trasparent', // Fondo blanco para que el logo resalte
   },
   modalButtonsRow: { flexDirection: 'row', gap: 10 },
   modalCancelBtn: { flex: 1, padding: 15, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#333' },
